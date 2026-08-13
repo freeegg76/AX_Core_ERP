@@ -1,0 +1,10 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+allowBuilds:
+  '@prisma/engines': true
+  prisma: true
+  '@prisma/client': true
+  argon2: true
+  esbuild: true
+  '@scarf/scarf': false

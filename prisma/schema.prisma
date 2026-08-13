@@ -1,0 +1,435 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model finance_bank_account {
+  company_id            String                  @db.VarChar(10)
+  entity_id             String                  @db.VarChar(10)
+  bank_id               String                  @db.VarChar(10)
+  bank_name             String?                 @db.NVarChar(50)
+  bank_account          String?                 @db.VarChar(50)
+  card_number           String?                 @db.VarChar(50)
+  status                Boolean                 @default(false, map: "DF_bank_status")
+  system_entity         system_entity           @relation(fields: [company_id, entity_id], references: [company_id, entity_id], onUpdate: NoAction, map: "FK_bank_entity")
+  finance_ledger_detail finance_ledger_detail[]
+  finance_open_balance  finance_open_balance[]
+
+  @@id([company_id, entity_id, bank_id], map: "PK_finance_bank_account")
+}
+
+model finance_closing {
+  company_id      String      @db.VarChar(10)
+  entity_id       String      @db.VarChar(10)
+  company_year_id String      @db.VarChar(10)
+  closing         Boolean     @default(true, map: "DF_closing")
+  closing_date    DateTime?   @db.Date
+  system_year     system_year @relation(fields: [company_id, entity_id, company_year_id], references: [company_id, entity_id, company_year_id], onUpdate: NoAction, map: "FK_closing_year")
+
+  @@id([company_id, entity_id, company_year_id], map: "PK_finance_closing")
+}
+
+model finance_dimension {
+  company_id               String                     @db.VarChar(10)
+  entity_id                String                     @db.VarChar(10)
+  dimension_id             String                     @db.VarChar(10)
+  dimension_name           String?                    @db.NVarChar(100)
+  slot_no                  Int                        @db.TinyInt
+  status                   Boolean                    @default(true, map: "DF_dim_status")
+  system_entity            system_entity              @relation(fields: [company_id, entity_id], references: [company_id, entity_id], onUpdate: NoAction, map: "FK_dim_entity")
+  finance_dimension_detail finance_dimension_detail[]
+
+  @@id([company_id, entity_id, dimension_id], map: "PK_finance_dimension")
+  @@unique([company_id, entity_id, slot_no], map: "UQ_dim_slot")
+}
+
+model finance_dimension_detail {
+  company_id        String            @db.VarChar(10)
+  entity_id         String            @db.VarChar(10)
+  dimension_id      String            @db.VarChar(10)
+  line_no           Decimal           @db.Decimal(10, 2)
+  dimension_value   String?           @db.NVarChar(200)
+  finance_dimension finance_dimension @relation(fields: [company_id, entity_id, dimension_id], references: [company_id, entity_id, dimension_id], onUpdate: NoAction, map: "FK_dimd_dim")
+
+  @@id([company_id, entity_id, dimension_id, line_no], map: "PK_finance_dimension_detail")
+}
+
+model finance_GL {
+  company_id            String                  @db.VarChar(10)
+  entity_id             String                  @db.VarChar(10)
+  gl_id                 String                  @db.VarChar(10)
+  gl_name               String?                 @db.NVarChar(100)
+  gl_type               String?                 @db.VarChar(50)
+  gl_category1          String?                 @db.NVarChar(50)
+  gl_category2          String?                 @db.NVarChar(50)
+  vat_gl                String?                 @db.NVarChar(50)
+  gl_detail             String?                 @default("0", map: "DF_gl_detail") @db.VarChar(10)
+  contra_gl             String?                 @db.VarChar(10)
+  status                Boolean                 @default(true, map: "DF_gl_status")
+  bank_id               Boolean                 @default(false, map: "DF__finance_G__bank___17036CC0")
+  Team_id               Boolean                 @default(false, map: "DF__finance_G__Team___17F790F9")
+  pod_id                Boolean                 @default(false, map: "DF__finance_G__pod_i__18EBB532")
+  employee_Id           Boolean                 @default(false, map: "DF__finance_G__emplo__19DFD96B")
+  client_id             Boolean                 @default(false, map: "DF__finance_G__clien__1AD3FDA4")
+  vendor_id             Boolean                 @default(false, map: "DF__finance_G__vendo__1BC821DD")
+  dimension1            Boolean                 @default(false, map: "DF__finance_G__dimen__1CBC4616")
+  dimension2            Boolean                 @default(false, map: "DF__finance_G__dimen__1DB06A4F")
+  dimension3            Boolean                 @default(false, map: "DF__finance_G__dimen__1EA48E88")
+  dimension4            Boolean                 @default(false, map: "DF__finance_G__dimen__1F98B2C1")
+  dimension5            Boolean                 @default(false, map: "DF__finance_G__dimen__208CD6FA")
+  due_date              Boolean                 @default(false, map: "DF__finance_G__due_d__2180FB33")
+  system_entity         system_entity           @relation(fields: [company_id, entity_id], references: [company_id, entity_id], onUpdate: NoAction, map: "FK_gl_entity")
+  finance_ledger_detail finance_ledger_detail[]
+  finance_open_balance  finance_open_balance[]
+
+  @@id([company_id, entity_id, gl_id], map: "PK_finance_GL")
+}
+
+model finance_GL_seed {
+  gl_id        String  @id(map: "PK__finance___1E26C4BC58D2E7AC") @db.VarChar(10)
+  gl_name      String? @db.NVarChar(100)
+  gl_type      String? @db.VarChar(50)
+  gl_category1 String? @db.NVarChar(50)
+  gl_category2 String? @db.NVarChar(50)
+  vat_gl       String? @db.NVarChar(50)
+  gl_detail    String? @db.VarChar(10)
+  contra_gl    String? @db.VarChar(10)
+  status       Boolean @default(true, map: "DF__finance_G__statu__25518C17")
+  bank_id      Boolean @default(false, map: "DF__finance_G__bank___2645B050")
+  Team_id      Boolean @default(false, map: "DF__finance_G__Team___2739D489")
+  pod_id       Boolean @default(false, map: "DF__finance_G__pod_i__282DF8C2")
+  employee_Id  Boolean @default(false, map: "DF__finance_G__emplo__29221CFB")
+  client_id    Boolean @default(false, map: "DF__finance_G__clien__2A164134")
+  vendor_id    Boolean @default(false, map: "DF__finance_G__vendo__2B0A656D")
+  dimension1   Boolean @default(false, map: "DF__finance_G__dimen__2BFE89A6")
+  dimension2   Boolean @default(false, map: "DF__finance_G__dimen__2CF2ADDF")
+  dimension3   Boolean @default(false, map: "DF__finance_G__dimen__2DE6D218")
+  dimension4   Boolean @default(false, map: "DF__finance_G__dimen__2EDAF651")
+  dimension5   Boolean @default(false, map: "DF__finance_G__dimen__2FCF1A8A")
+  due_date     Boolean @default(false, map: "DF__finance_G__due_d__30C33EC3")
+}
+
+model finance_ledger_detail {
+  company_id           String                @db.VarChar(10)
+  entity_id            String                @db.VarChar(10)
+  ledger_date          DateTime              @db.Date
+  ledger_no            Decimal               @db.Decimal(10, 2)
+  line_on              Decimal               @db.Decimal(10, 2)
+  gl_id                String                @db.VarChar(10)
+  DRCR                 String?               @db.VarChar(10)
+  amount               Decimal?              @db.Decimal(18, 2)
+  bank_id              String?               @db.VarChar(10)
+  Team_id              String?               @db.VarChar(10)
+  pod_id               String?               @db.VarChar(4)
+  employee_Id          String?               @db.VarChar(10)
+  client_id            String?               @db.VarChar(10)
+  vendor_id            String?               @db.VarChar(10)
+  dimension1           String?               @db.VarChar(10)
+  dimension2           String?               @db.VarChar(10)
+  dimension3           String?               @db.VarChar(10)
+  dimension4           String?               @db.VarChar(10)
+  dimension5           String?               @db.VarChar(10)
+  due_date             DateTime?             @db.Date
+  finance_bank_account finance_bank_account? @relation(fields: [company_id, entity_id, bank_id], references: [company_id, entity_id, bank_id], onUpdate: NoAction, map: "FK_ld_bank")
+  finance_GL           finance_GL            @relation(fields: [company_id, entity_id, gl_id], references: [company_id, entity_id, gl_id], onUpdate: NoAction, map: "FK_ld_gl")
+  finance_ledger_head  finance_ledger_head   @relation(fields: [company_id, entity_id, ledger_date, ledger_no], references: [company_id, entity_id, ledger_date, ledger_no], onUpdate: NoAction, map: "FK_ld_head")
+
+  @@id([company_id, entity_id, ledger_date, ledger_no, line_on], map: "PK_finance_ledger_detail")
+}
+
+model finance_ledger_head {
+  company_id            String                  @db.VarChar(10)
+  entity_id             String                  @db.VarChar(10)
+  ledger_date           DateTime                @db.Date
+  ledger_no             Decimal                 @db.Decimal(10, 2)
+  ledger_name           String?                 @db.NVarChar(100)
+  ledger_type           String?                 @default("0", map: "DF_lh_type") @db.VarChar(10)
+  employee_Id           String?                 @db.VarChar(10)
+  approver_Id           String?                 @db.VarChar(10)
+  insert_date           DateTime?               @db.Date
+  update_date           DateTime?               @db.Date
+  approved_date         DateTime?
+  approval_status       Boolean                 @default(false, map: "DF_lh_appr")
+  finance_ledger_detail finance_ledger_detail[]
+  system_entity         system_entity           @relation(fields: [company_id, entity_id], references: [company_id, entity_id], onUpdate: NoAction, map: "FK_lh_entity")
+
+  @@id([company_id, entity_id, ledger_date, ledger_no], map: "PK_finance_ledger_head")
+}
+
+model finance_open_balance {
+  company_id           String                @db.VarChar(10)
+  entity_id            String                @db.VarChar(10)
+  company_year_id      String                @db.VarChar(10)
+  gl_id                String                @db.VarChar(10)
+  DRCR                 String                @db.VarChar(10)
+  client_id            String?               @db.VarChar(10)
+  vendor_id            String?               @db.VarChar(10)
+  amount               Decimal               @default(0, map: "DF_ob_amount") @db.Decimal(18, 2)
+  closed               Boolean               @default(false, map: "DF_ob_closed")
+  client_key           String                @db.VarChar(10)
+  vendor_key           String                @db.VarChar(10)
+  bank_id              String?               @db.VarChar(10)
+  bank_key             String                @db.VarChar(10)
+  source               String                @default("MANUAL", map: "DF_ob_source") @db.VarChar(10)
+  finance_bank_account finance_bank_account? @relation(fields: [company_id, entity_id, bank_id], references: [company_id, entity_id, bank_id], onUpdate: NoAction, map: "FK_ob_bank")
+  finance_GL           finance_GL            @relation(fields: [company_id, entity_id, gl_id], references: [company_id, entity_id, gl_id], onUpdate: NoAction, map: "FK_ob_gl")
+  system_year          system_year           @relation(fields: [company_id, entity_id, company_year_id], references: [company_id, entity_id, company_year_id], onUpdate: NoAction, map: "FK_ob_year")
+
+  @@id([company_id, entity_id, company_year_id, gl_id, DRCR, bank_key, client_key, vendor_key], map: "PK_finance_open_balance")
+}
+
+model partner_client {
+  company_id               String           @db.VarChar(10)
+  entity_id                String           @db.VarChar(10)
+  client_id                String           @db.VarChar(10)
+  client_name              String           @db.NVarChar(50)
+  collecting_type          String?          @db.VarChar(10)
+  status                   Boolean          @default(true, map: "DF_client_status")
+  vat_id                   String?          @db.VarChar(20)
+  NickName                 String?          @db.NVarChar(50)
+  RepName                  String?          @db.NVarChar(50)
+  RegNum                   String?          @db.VarChar(50)
+  BizIndustry              String?          @db.NVarChar(50)
+  BizCategory              String?          @db.NVarChar(50)
+  client_Address           String?          @db.NVarChar(200)
+  PhoneNumber              String?          @db.VarChar(20)
+  FaxNumber                String?          @db.VarChar(20)
+  BankCode                 String?          @db.NVarChar(50)
+  BankBranch               String?          @db.NVarChar(50)
+  BankAccount              String?          @db.VarChar(50)
+  BankHolder               String?          @db.NVarChar(50)
+  website                  String?          @db.VarChar(200)
+  logo_url                 String?          @db.VarChar(200)
+  industry                 String?          @db.NVarChar(200)
+  notes                    String?          @db.NVarChar(200)
+  default_billing_currency String?          @db.VarChar(10)
+  system_entity            system_entity    @relation(fields: [company_id, entity_id], references: [company_id, entity_id], onUpdate: NoAction, map: "FK_client_entity")
+  partner_term             partner_term?    @relation(fields: [company_id, entity_id, collecting_type], references: [company_id, entity_id, term_id], onUpdate: NoAction, map: "FK_client_term")
+  sales_contract           sales_contract[]
+
+  @@id([company_id, entity_id, client_id], map: "PK_partner_client")
+}
+
+model partner_term {
+  company_id     String           @db.VarChar(10)
+  entity_id      String           @db.VarChar(10)
+  term_id        String           @db.VarChar(10)
+  term_condition String           @db.VarChar(20)
+  base_rule      String           @db.VarChar(10)
+  fixed_day      Decimal?         @db.Decimal(2, 0)
+  offset_days    Decimal          @default(0, map: "DF_term_offset") @db.Decimal(3, 0)
+  status         Boolean          @default(true, map: "DF_term_status")
+  partner_client partner_client[]
+  system_entity  system_entity    @relation(fields: [company_id, entity_id], references: [company_id, entity_id], onUpdate: NoAction, map: "FK_term_entity")
+  partner_vendor partner_vendor[]
+
+  @@id([company_id, entity_id, term_id], map: "PK_partner_term")
+}
+
+model partner_vendor {
+  company_id               String        @db.VarChar(10)
+  entity_id                String        @db.VarChar(10)
+  vendor_id                String        @db.VarChar(10)
+  vendor_name              String        @db.NVarChar(50)
+  payment_type             String?       @db.VarChar(10)
+  status                   Boolean       @default(true, map: "DF_vendor_status")
+  vat_id                   String?       @db.VarChar(20)
+  NickName                 String?       @db.NVarChar(50)
+  RepName                  String?       @db.NVarChar(50)
+  RegNum                   String?       @db.VarChar(50)
+  BizIndustry              String?       @db.NVarChar(50)
+  BizCategory              String?       @db.NVarChar(50)
+  vendor_Address           String?       @db.NVarChar(200)
+  PhoneNumber              String?       @db.VarChar(20)
+  FaxNumber                String?       @db.VarChar(20)
+  BankCode                 String?       @db.NVarChar(50)
+  BankBranch               String?       @db.NVarChar(50)
+  BankAccount              String?       @db.VarChar(50)
+  BankHolder               String?       @db.NVarChar(50)
+  website                  String?       @db.VarChar(200)
+  logo_url                 String?       @db.VarChar(200)
+  industry                 String?       @db.NVarChar(200)
+  notes                    String?       @db.NVarChar(200)
+  default_billing_currency String?       @db.VarChar(10)
+  system_entity            system_entity @relation(fields: [company_id, entity_id], references: [company_id, entity_id], onUpdate: NoAction, map: "FK_vendor_entity")
+  partner_term             partner_term? @relation(fields: [company_id, entity_id, payment_type], references: [company_id, entity_id, term_id], onUpdate: NoAction, map: "FK_vendor_term")
+
+  @@id([company_id, entity_id, vendor_id], map: "PK_partner_vendor")
+}
+
+model sales_contract {
+  company_id      String         @db.VarChar(10)
+  entity_id       String         @db.VarChar(10)
+  client_id       String         @db.VarChar(10)
+  contract_id     String         @db.VarChar(20)
+  contract_type   String         @default("0", map: "DF_ct_type") @db.VarChar(5)
+  pipeline_id     String?        @db.VarChar(10)
+  start_date      DateTime       @db.Date
+  end_date        DateTime       @db.Date
+  status          String         @default("0", map: "DF_ct_status") @db.VarChar(10)
+  contract_amount Decimal?       @db.Decimal(18, 2)
+  ledger_date     DateTime?      @db.Date
+  ledger_no       Decimal?       @db.Decimal(10, 2)
+  closed_date     DateTime?      @db.Date
+  partner_client  partner_client @relation(fields: [company_id, entity_id, client_id], references: [company_id, entity_id, client_id], onUpdate: NoAction, map: "FK_ct_client")
+
+  @@id([company_id, entity_id, contract_id, contract_type], map: "PK_sales_contract")
+}
+
+model sales_pipeline {
+  company_id            String                  @db.VarChar(10)
+  entity_id             String                  @db.VarChar(10)
+  pipeline_id           String                  @db.VarChar(10)
+  pipeline_type         String?                 @default("0", map: "DF_pipe_type") @db.VarChar(40)
+  client_name           String?                 @db.NVarChar(100)
+  stage                 String?                 @default("0", map: "DF_pipe_stage") @db.VarChar(40)
+  employee_Id           String?                 @db.VarChar(10)
+  note                  String?                 @db.NVarChar(255)
+  created_date          DateTime?               @db.Date
+  adjusted_date         DateTime?               @db.Date
+  closed_date           DateTime?               @db.Date
+  contract_id           String?                 @db.VarChar(20)
+  system_employee       system_employee?        @relation(fields: [company_id, entity_id, employee_Id], references: [company_id, entity_id, employee_Id], onUpdate: NoAction, map: "FK_pipe_emp")
+  system_entity         system_entity           @relation(fields: [company_id, entity_id], references: [company_id, entity_id], onUpdate: NoAction, map: "FK_pipe_entity")
+  sales_pipeline_detail sales_pipeline_detail[]
+
+  @@id([company_id, entity_id, pipeline_id], map: "PK_sales_pipeline")
+}
+
+model sales_pipeline_detail {
+  company_id     String         @db.VarChar(10)
+  entity_id      String         @db.VarChar(10)
+  pipeline_id    String         @db.VarChar(10)
+  activity_id    String         @db.VarChar(20)
+  created_date   DateTime?      @db.Date
+  type           String         @default("0", map: "DF_act_type") @db.VarChar(30)
+  content        String?        @db.NVarChar(250)
+  incharge       String?        @db.NVarChar(100)
+  attached       String?        @db.VarChar(250)
+  sales_pipeline sales_pipeline @relation(fields: [company_id, entity_id, pipeline_id], references: [company_id, entity_id, pipeline_id], onUpdate: NoAction, map: "FK_act_pipe")
+
+  @@id([company_id, entity_id, pipeline_id, activity_id], map: "PK_sales_pipeline_detail")
+}
+
+model system_company {
+  company_id      String          @id(map: "PK_system_company") @db.VarChar(10)
+  company_name    String          @db.NVarChar(50)
+  company_name_ko String          @db.NVarChar(50)
+  note            String?         @db.NVarChar(200)
+  description     String?         @db.NVarChar(200)
+  status          Boolean         @default(false, map: "DF_company_status")
+  system_entity   system_entity[]
+}
+
+model system_employee {
+  company_id          String           @db.VarChar(10)
+  entity_id           String           @db.VarChar(10)
+  Team_id             String           @db.VarChar(10)
+  employee_Id         String           @db.VarChar(10)
+  employee_name       String           @db.NVarChar(40)
+  email               String?          @db.VarChar(40)
+  english_name        String?          @db.NVarChar(40)
+  title               String?          @db.NVarChar(40)
+  title_abbr          String?          @db.NVarChar(40)
+  employment_type     String?          @db.NVarChar(40)
+  status              String?          @db.VarChar(20)
+  departure_date      DateTime?        @db.Date
+  start_date          DateTime?        @db.Date
+  timezone            String?          @db.VarChar(20)
+  phone               String?          @db.VarChar(20)
+  birthday            DateTime?        @db.Date
+  profile_image_url   String?          @db.VarChar(200)
+  slack_user_id       String?          @db.VarChar(200)
+  slack_handle        String?          @db.VarChar(200)
+  social_buddy        String?          @db.NVarChar(200)
+  user_yn             Boolean          @default(false, map: "DF_emp_user_yn")
+  user_id             String?          @db.VarChar(20)
+  user_pass           String           @db.VarChar(255)
+  last_login          DateTime?
+  last_manual_edit_at DateTime?
+  sales_pipeline      sales_pipeline[]
+  system_team         system_team      @relation(fields: [company_id, entity_id, Team_id], references: [company_id, entity_id, Team_id], onUpdate: NoAction, map: "FK_emp_team")
+
+  @@id([company_id, entity_id, employee_Id], map: "PK_system_employee")
+}
+
+model system_entity {
+  company_id           String                 @db.VarChar(10)
+  entity_id            String                 @db.VarChar(10)
+  entity_name          String                 @db.NVarChar(50)
+  entity_name_ko       String                 @db.NVarChar(50)
+  RepName              String?                @db.NVarChar(100)
+  RegNum               String?                @db.VarChar(20)
+  BizNum               String?                @db.VarChar(20)
+  BizIndustry          String?                @db.NVarChar(100)
+  BizCategory          String?                @db.NVarChar(100)
+  Address              String?                @db.NVarChar(255)
+  estabilish_date      DateTime?              @db.Date
+  PhoneNumber          String?                @db.VarChar(30)
+  FaxNumber            String?                @db.VarChar(30)
+  note                 String?                @db.NVarChar(200)
+  description          String?                @db.NVarChar(200)
+  status               Boolean                @default(false, map: "DF_entity_status")
+  finance_bank_account finance_bank_account[]
+  finance_dimension    finance_dimension[]
+  finance_GL           finance_GL[]
+  finance_ledger_head  finance_ledger_head[]
+  partner_client       partner_client[]
+  partner_term         partner_term[]
+  partner_vendor       partner_vendor[]
+  sales_pipeline       sales_pipeline[]
+  system_company       system_company         @relation(fields: [company_id], references: [company_id], onUpdate: NoAction, map: "FK_entity_company")
+  system_pod           system_pod[]
+  system_team          system_team[]
+  system_year          system_year[]
+
+  @@id([company_id, entity_id], map: "PK_system_entity")
+}
+
+model system_pod {
+  company_id    String        @db.VarChar(10)
+  entity_id     String        @db.VarChar(10)
+  pod_id        String        @db.VarChar(4)
+  pod_name      String        @db.NVarChar(200)
+  status        Boolean       @default(false, map: "DF_pod_status")
+  system_entity system_entity @relation(fields: [company_id, entity_id], references: [company_id, entity_id], onUpdate: NoAction, map: "FK_pod_entity")
+  system_team   system_team[]
+
+  @@id([company_id, entity_id, pod_id], map: "PK_system_pod")
+}
+
+model system_team {
+  company_id      String            @db.VarChar(10)
+  entity_id       String            @db.VarChar(10)
+  Team_id         String            @db.VarChar(10)
+  team_name       String?           @db.NVarChar(200)
+  team_name_ko    String?           @db.NVarChar(200)
+  owner           String            @db.VarChar(20)
+  leader_user_id  String            @db.VarChar(20)
+  note            String?           @db.NVarChar(200)
+  status          Boolean           @default(false, map: "DF_team_status")
+  pod_id          String?           @db.VarChar(4)
+  system_employee system_employee[]
+  system_entity   system_entity     @relation(fields: [company_id, entity_id], references: [company_id, entity_id], onUpdate: NoAction, map: "FK_team_entity")
+  system_pod      system_pod?       @relation(fields: [company_id, entity_id, pod_id], references: [company_id, entity_id, pod_id], onUpdate: NoAction, map: "FK_team_pod")
+
+  @@id([company_id, entity_id, Team_id], map: "PK_system_team")
+}
+
+model system_year {
+  company_id           String                 @db.VarChar(10)
+  entity_id            String                 @db.VarChar(10)
+  company_year_id      String                 @db.VarChar(10)
+  company_year         Decimal                @db.Decimal(10, 2)
+  actual_year          Decimal                @db.Decimal(10, 2)
+  finance_closing      finance_closing?
+  finance_open_balance finance_open_balance[]
+  system_entity        system_entity          @relation(fields: [company_id, entity_id], references: [company_id, entity_id], onUpdate: NoAction, map: "FK_year_entity")
+
+  @@id([company_id, entity_id, company_year_id], map: "PK_system_year")
+  @@unique([company_id, entity_id, actual_year, company_year], map: "UQ_year_actual")
+}

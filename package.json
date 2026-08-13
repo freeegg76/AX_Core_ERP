@@ -1,0 +1,26 @@
+{
+  "name": "ax-bridge",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "db:apply": "node scripts/apply-db.mjs",
+    "db:pull": "prisma db pull --schema prisma/schema.prisma",
+    "db:generate": "prisma generate --schema prisma/schema.prisma"
+  },
+  "devDependencies": {
+    "@prisma/client": "6.19.3",
+    "argon2": "^0.41.1",
+    "mssql": "^11.0.1",
+    "prisma": "^6.1.0",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}
