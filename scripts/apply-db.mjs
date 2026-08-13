@@ -46,14 +46,24 @@ if (!files.length) {
   process.exit(1);
 }
 
-console.log(`서버 ${SERVER} / DB ${DB} — ${files.length}개 스크립트 적용\n`);
+console.log(
+  `서버 ${SERVER} / 대상 DB ${DB} (master 로 접속 — 01 이 DB 를 생성한다) — ${files.length}개 스크립트 적용\n`,
+);
 let failed = 0;
 for (const f of files) {
   process.stdout.write(f.padEnd(38));
   try {
     execFileSync(
       'sqlcmd',
-      ['-S', SERVER, '-d', DB, '-U', USER, '-P', PASS, '-C', '-b', '-f', '65001', '-I', '-i', f],
+      /*
+       * ⚠ `master` 로 접속한다 (대상 DB 가 아니다).
+       *
+       * 01 스크립트가 `IF DB_ID(N'AX_Bridge') IS NULL CREATE DATABASE` 로 DB 를
+       * 직접 만들기 때문에, 신규 PC 에서 `-d AX_BRIDGE` 로 붙으면 "DB 가 없다"로
+       * 접속 자체가 실패해 부트스트랩이 불가능하다.
+       * 모든 스크립트가 자체 `USE AX_Bridge;` 를 갖고 있어 master 접속으로 충분하다.
+       */
+      ['-S', SERVER, '-d', 'master', '-U', USER, '-P', PASS, '-C', '-b', '-f', '65001', '-I', '-i', f],
       { cwd: dbDir, stdio: ['ignore', 'pipe', 'pipe'] },
     );
     console.log('OK');
