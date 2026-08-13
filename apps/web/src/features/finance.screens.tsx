@@ -55,8 +55,15 @@ export function GlScreen() {
         title="계정과목"
         endpoint="/finance/gl"
         idField="gl_id"
-        headSpan={9}
+        headSpan={10}
         columns={[
+          // 화면기획서 5-1 ② : 좌측 Head 는 계정구분·계정코드·계정과목 3컬럼
+          {
+            key: 'gl_type',
+            title: '계정구분',
+            width: 100,
+            render: (r) => GL_TYPE_LABEL[String(r.gl_type) as GlType] ?? String(r.gl_type ?? ''),
+          },
           { key: 'gl_id', title: '계정코드', width: 100 },
           { key: 'gl_name', title: '계정과목' },
         ]}

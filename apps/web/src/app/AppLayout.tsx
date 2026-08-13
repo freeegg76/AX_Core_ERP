@@ -1,6 +1,6 @@
 import { Layout, Menu, Space, Tag, Typography, Dropdown, Button } from 'antd';
 import { useMemo } from 'react';
-import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from './auth.store';
 
 /**
@@ -70,9 +70,18 @@ export function AppLayout() {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Layout.Header style={{ display: 'flex', alignItems: 'center', gap: 16, paddingInline: 16 }}>
-        <Typography.Text strong style={{ color: '#fff', fontSize: 16 }}>
-          AX Bridge
-        </Typography.Text>
+        {/* 홈으로 이동 — `/` 는 router 에서 기본 화면으로 리다이렉트된다.
+            a 태그(Link)로 두어 키보드 포커스·새 탭 열기가 그대로 동작한다. */}
+        <Link to="/" title="홈으로 이동" style={{ display: 'inline-flex', alignItems: 'center' }}>
+          <Typography.Text
+            strong
+            style={{ color: '#fff', fontSize: 16, cursor: 'pointer' }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.75')}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+          >
+            AX Bridge
+          </Typography.Text>
+        </Link>
         <Space style={{ marginLeft: 'auto' }}>
           {/* 표시용이다 — 서버는 JWT claim 을 쓰고 이 값을 신뢰하지 않는다(FR-Bank-08) */}
           <Tag color="blue">

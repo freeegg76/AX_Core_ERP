@@ -20,6 +20,7 @@ import { Scope } from '../../../common/tenant/scope.decorator';
 import type { CompanyScope } from '../../../common/tenant/company-scope';
 import type { AuthUser } from '../../../common/auth/auth-user';
 import { LedgerService } from '../application/ledger.service';
+import { FinanceQuery } from '../infrastructure/finance.query';
 import { FinanceRepository } from '../infrastructure/finance.repository';
 import type { GlFlags } from '../domain/ledger';
 import {
@@ -56,18 +57,26 @@ function toFlags(dto: SaveGlDto): GlFlags {
 @ApiTags('FINANCE · 계정과목')
 @Controller('finance/gl')
 export class GlController {
-  constructor(private readonly repo: FinanceRepository) {}
+  constructor(
+    private readonly repo: FinanceRepository,
+    private readonly query: FinanceQuery,
+  ) {}
 
   @Get()
   @MinRole(Role.Viewer)
-  @ApiOperation({ summary: '계정 목록 (Head: 코드·명) / 전표 계정 팝업(active_only)' })
-  async list(@Scope() scope: CompanyScope, @Query() q: GlListQueryDto) {
-    const { rows } = await this.repo.listGl(scope, {
+  @ApiOperation({
+    summary: '계정 목록 (Head: 계정구분·코드·명) / 전표 계정 팝업(active_only)',
+    description:
+      'usp_finance_gl_list 는 gl_id·gl_name 2컬럼만 반환하지만 화면기획서 5-1 ② 는 ' +
+      '좌측 Head 에 계정구분까지 3컬럼을 요구한다. D2 원칙대로 Query Service 가 담당한다.',
+  })
+  list(@Scope() scope: CompanyScope, @Query() q: GlListQueryDto) {
+    return this.query.gl(scope, {
+      page: q.page, size: q.size, searchMode: q.search_mode,
       keyword: q.keyword, glType: q.gl_type,
       category1: q.gl_category1, category2: q.gl_category2, vatGl: q.vat_gl,
-      status: q.status, searchMode: q.search_mode, activeOnly: q.active_only,
+      status: q.status, activeOnly: q.active_only,
     });
-    return { items: rows, page: 1, size: rows.length, total: rows.length };
   }
 
   @Get(':glId')

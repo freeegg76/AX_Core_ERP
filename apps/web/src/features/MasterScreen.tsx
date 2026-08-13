@@ -122,6 +122,8 @@ export function MasterScreen<T extends Record<string, unknown>>({
       headTitle={`${title} 목록 (${rows.length}건)`}
       detailTitle={`${title} 상세`}
       headSpan={headSpan}
+      // 화면별로 폭을 따로 기억한다 (endpoint 가 화면 식별자 역할을 한다)
+      paneKey={`master${endpoint.replace(/\//g, '-')}`}
       searchBar={
         <Form layout="inline">
           {searchFields}

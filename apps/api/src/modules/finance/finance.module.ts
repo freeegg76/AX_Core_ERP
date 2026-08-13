@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { LedgerService } from './application/ledger.service';
+import { FinanceQuery } from './infrastructure/finance.query';
 import { FinanceRepository } from './infrastructure/finance.repository';
 import {
   BankController,
@@ -24,7 +25,7 @@ import {
     LedgerController,
     ClosingController,
   ],
-  providers: [FinanceRepository, LedgerService],
-  exports: [FinanceRepository, LedgerService],
+  providers: [FinanceRepository, FinanceQuery, LedgerService],
+  exports: [FinanceRepository, FinanceQuery, LedgerService],
 })
 export class FinanceModule {}

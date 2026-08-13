@@ -1,9 +1,9 @@
-import { App, Card, Col, DatePicker, Descriptions, Input, InputNumber, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
+import { App, Card, Descriptions, Empty, Form, Input, InputNumber, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DebitCredit, DRCR_LABEL, LEDGER_TYPE_LABEL, LedgerType } from '@ax-bridge/shared-constants';
 import { ApiError, http, type Paged } from '../shared/api/client';
-import { AppToolbar, ApprovalBadge, LookupPopup, Money, useDirtyGuard } from '../shared/ui';
+import { AppToolbar, ApprovalBadge, LookupPopup, Money, ResizablePanes, useDirtyGuard } from '../shared/ui';
 
 interface HeadRow {
   ledger_date: string;
@@ -49,6 +49,16 @@ interface LedgerDetail {
   totals: { debit: number; credit: number; difference: number; balanced: boolean };
 }
 
+/** YYYY-MM 형식 검사 */
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** YYYY-MM → 해당 월의 [1일, 말일] (FR-Ledger-01 전표일자 범위 조건) */
+function monthRange(month: string): { from: string; to: string } {
+  const [y, m] = month.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, '0')}` };
+}
+
 const EMPTY_FLAGS: GlFlags = {
   bank: false, team: false, pod: false, employee: false, client: false, vendor: false,
   dim1: false, dim2: false, dim3: false, dim4: false, dim5: false, due: false,
@@ -74,10 +84,33 @@ export function LedgerScreen() {
   const [activeLine, setActiveLine] = useState<string | null>(null);
   const { confirmLeave } = useDirtyGuard(editing);
 
+  /**
+   * 조회조건 — 전표일자를 **월(YYYY-MM)** 단위로 받는다.
+   * 초기에는 비어 있으므로 `enabled: false` 로 아무 데이터도 조회하지 않는다.
+   * 사용자가 월을 넣고 조회해야 비로소 해당 월의 전표가 나온다.
+   */
+  const [monthInput, setMonthInput] = useState('');
+  const [appliedMonth, setAppliedMonth] = useState<string | null>(null);
+
   const heads = useQuery({
-    queryKey: ['/finance/ledgers'],
-    queryFn: () => http.get<Paged<HeadRow>>('/finance/ledgers'),
+    queryKey: ['/finance/ledgers', appliedMonth],
+    queryFn: () => {
+      const { from, to } = monthRange(appliedMonth!);
+      return http.get<Paged<HeadRow>>('/finance/ledgers', { date_from: from, date_to: to });
+    },
+    enabled: !!appliedMonth,
   });
+
+  const applyMonth = () => {
+    const v = monthInput.trim();
+    if (!MONTH_RE.test(v)) {
+      message.warning('전표월을 YYYY-MM 형식으로 입력하세요. (예: 2026-03)');
+      return;
+    }
+    setAppliedMonth(v);
+    setSelectedKey(null);
+    setActiveLine(null);
+  };
 
   const [d, n] = selectedKey ? selectedKey.split('|') : [null, null];
   const detail = useQuery({
@@ -203,7 +236,7 @@ export function LedgerScreen() {
         mode={editing ? 'edit' : 'view'}
         hasSelection={!!selectedKey}
         loading={heads.isFetching}
-        onSearch={() => confirmLeave(() => void heads.refetch())}
+        onSearch={() => confirmLeave(() => (appliedMonth === monthInput.trim() ? void heads.refetch() : applyMonth()))}
         onCreate={() =>
           modal.confirm({
             title: '전표 신규 등록',
@@ -281,10 +314,37 @@ export function LedgerScreen() {
         status={detail.data && <ApprovalBadge approved={detail.data.head.approval_status} />}
       />
 
-      <Row gutter={12}>
+      {/*
+        조회조건바 — **툴바 바로 아래**에 둔다.
+        전표는 건수가 많아 전체 조회를 허용하지 않고 월 단위로만 조회한다:
+        초기 진입 시에는 아무 데이터도 조회하지 않고(enabled:false),
+        전표월(YYYY-MM)을 입력해야 해당 월의 전표가 나온다.
+      */}
+      <Card size="small" style={{ marginBottom: 12 }}>
+        <Form layout="inline" onFinish={applyMonth}>
+          <Form.Item label="전표월" required tooltip="YYYY-MM 형식으로 입력하세요 (예: 2026-03)">
+            <Input
+              value={monthInput}
+              onChange={(e) => setMonthInput(e.target.value)}
+              onPressEnter={applyMonth}
+              placeholder="YYYY-MM"
+              style={{ width: 130 }}
+              allowClear
+            />
+          </Form.Item>
+          <Form.Item>
+            <Typography.Text type="secondary">
+              {appliedMonth
+                ? `조회 기간 : ${monthRange(appliedMonth).from} ~ ${monthRange(appliedMonth).to}`
+                : '전표월을 입력하고 [조회] 를 누르세요.'}
+            </Typography.Text>
+          </Form.Item>
+        </Form>
+      </Card>
+
+      <ResizablePanes storageKey="ledger-3layer" initial={[30, 42, 28]}>
         {/* Layer 1 — 헤더 목록 */}
-        <Col span={7}>
-          <Card size="small" title="Layer 1 · 전표 헤더">
+        <Card size="small" title="Layer 1 · 전표 헤더" style={{ height: '100%' }}>
             <Table<HeadRow>
               size="small"
               rowKey={(r) => `${r.ledger_date}|${r.ledger_no}`}
@@ -319,13 +379,12 @@ export function LedgerScreen() {
               ]}
             />
           </Card>
-        </Col>
 
         {/* Layer 2 — 라인 + 실시간 차대합계 */}
-        <Col span={10}>
-          <Card
+        <Card
             size="small"
             title="Layer 2 · 전표 라인"
+            style={{ height: '100%' }}
             extra={
               <Space size="large">
                 <Statistic title="차변" value={totals.debit} valueStyle={{ fontSize: 13 }} />
@@ -419,11 +478,9 @@ export function LedgerScreen() {
               ]}
             />
           </Card>
-        </Col>
 
         {/* Layer 3 — 관리항목 (플래그 Y 만 활성) */}
-        <Col span={7}>
-          <Card size="small" title="Layer 3 · 은행/카드 · 관리항목">
+        <Card size="small" title="Layer 3 · 은행/카드 · 관리항목" style={{ height: '100%' }}>
             {!current ? (
               <Typography.Text type="secondary">라인을 선택하세요.</Typography.Text>
             ) : (
@@ -487,8 +544,7 @@ export function LedgerScreen() {
               </Space>
             )}
           </Card>
-        </Col>
-      </Row>
+      </ResizablePanes>
 
       {detail.data && (
         <Card size="small" style={{ marginTop: 12 }}>
