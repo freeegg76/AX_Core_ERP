@@ -1,76 +1,51 @@
+import { CloseOutlined } from '@ant-design/icons';
 import { Layout, Menu, Space, Tag, Typography, Dropdown, Button } from 'antd';
-import { useMemo } from 'react';
+import { useEffect } from 'react';
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from './auth.store';
+import { MENU_GROUPS, MENU_LABELS } from './menu';
+import { useTabsStore } from './tabs.store';
 
 /**
- * 앱 셸 — 4개 도메인 메뉴 (화면기획서 4-1 메뉴 구조).
+ * 앱 셸 — 4개 도메인 메뉴(화면기획서 4-1) + 상단 실행메뉴 탭.
  *
- * 메뉴 순서는 기준정보 구축 선행관계를 따른다:
- * SYSTEM(조직·기수) → PARTNER → SALES → FINANCE 기준정보 → FINANCE 핵심업무.
- *
- * ⚠ FINANCE 전표는 은행/카드·고객사·거래처 마스터가 **선행 등록되어야** 입력할 수
- * 있다 — 표준 GL 의 자산·자본 계정에 플래그 없는 계정이 하나도 없기 때문이다
- * (설계서 C.6). 메뉴 배치가 그 순서를 드러낸다.
+ * 메뉴 정의는 `menu.ts` 한 곳에만 둔다 — 사이드바와 탭 라벨이 갈라지지 않게.
  */
 export function AppLayout() {
   const { user, logout } = useAuthStore();
+  const { tabs, open, close, reset } = useTabsStore();
   const nav = useNavigate();
   const loc = useLocation();
 
-  const items = useMemo(
-    () => [
-      {
-        key: 'system',
-        label: 'SYSTEM',
-        children: [
-          { key: '/system/companies', label: '그룹관리' },
-          { key: '/system/entities', label: '회사관리' },
-          { key: '/system/pods', label: 'Pod 등록' },
-          { key: '/system/teams', label: '부서등록' },
-          { key: '/system/employees', label: '직원등록' },
-          { key: '/system/years', label: '회사 기수' },
-        ],
-      },
-      {
-        key: 'partner',
-        label: 'PARTNER',
-        children: [
-          { key: '/partner/terms', label: '지급정책' },
-          { key: '/partner/clients', label: '고객사' },
-          { key: '/partner/vendors', label: '거래처' },
-        ],
-      },
-      {
-        key: 'sales',
-        label: 'SALES',
-        children: [
-          { key: '/sales/pipelines', label: '파이프라인' },
-          { key: '/sales/contracts', label: '계약관리' },
-        ],
-      },
-      {
-        key: 'finance',
-        label: 'FINANCE',
-        children: [
-          { key: '/finance/gl', label: '계정과목' },
-          { key: '/finance/dimensions', label: '관리항목' },
-          { key: '/finance/bank-accounts', label: '은행/카드' },
-          { key: '/finance/open-balances', label: '초기이월' },
-          { key: '/finance/ledgers', label: '전표관리' },
-          { key: '/finance/closings', label: '마감관리' },
-        ],
-      },
-    ],
-    [],
-  );
+  /**
+   * 메뉴 화면에 들어오면 탭을 연다.
+   *
+   * 메뉴 클릭 핸들러가 아니라 **경로 변경**을 보고 있다 — 주소창 직접 입력이나
+   * 화면 내부 이동(전표 → 상세 등)으로 들어와도 탭이 생기고, 새로고침 후에도
+   * 현재 화면의 탭이 복원된다. 메인(`/`)처럼 메뉴에 없는 경로는 탭을 만들지 않는다.
+   */
+  const label = MENU_LABELS[loc.pathname];
+  useEffect(() => {
+    if (label) open(loc.pathname, label);
+  }, [loc.pathname, label, open]);
 
   if (!user) return <Navigate to="/login" replace />;
 
+  /** 탭을 닫는다. 보고 있던 탭이면 옆 탭으로, 남은 탭이 없으면 메인으로 이동한다. */
+  function closeTab(path: string) {
+    const idx = tabs.findIndex((t) => t.path === path);
+    close(path);
+    if (path !== loc.pathname) return;
+    const rest = tabs.filter((t) => t.path !== path);
+    nav(rest.length ? (rest[idx] ?? rest[rest.length - 1]).path : '/');
+  }
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Layout.Header style={{ display: 'flex', alignItems: 'center', gap: 16, paddingInline: 16 }}>
-        {/* 홈으로 이동 — `/` 는 router 에서 기본 화면으로 리다이렉트된다.
+      <Layout.Header
+        style={{ display: 'flex', alignItems: 'center', gap: 16, paddingInline: 16 }}
+      >
+        {/* 홈으로 이동 — `/` 는 메인 화면이다.
             a 태그(Link)로 두어 키보드 포커스·새 탭 열기가 그대로 동작한다. */}
         <Link to="/" title="홈으로 이동" style={{ display: 'inline-flex', alignItems: 'center' }}>
           <Typography.Text
@@ -82,7 +57,67 @@ export function AppLayout() {
             AX Bridge
           </Typography.Text>
         </Link>
-        <Space style={{ marginLeft: 'auto' }}>
+
+        {/* 실행메뉴 탭 — 탭이 많아지면 헤더를 밀지 않고 가로 스크롤된다. */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flex: 1,
+            minWidth: 0,
+            overflowX: 'auto',
+            scrollbarWidth: 'none',
+          }}
+        >
+          {tabs.map((t) => {
+            const active = t.path === loc.pathname;
+            return (
+              <div
+                key={t.path}
+                role="tab"
+                aria-selected={active}
+                tabIndex={0}
+                onClick={() => nav(t.path)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    nav(t.path);
+                  }
+                }}
+                title={t.label}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  flex: '0 0 auto',
+                  height: 32,
+                  paddingInline: 12,
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                  borderRadius: 4,
+                  border: `1px solid ${active ? '#4096ff' : 'rgba(255,255,255,0.35)'}`,
+                  background: active ? '#1668dc' : 'transparent',
+                  color: active ? '#fff' : 'rgba(255,255,255,0.75)',
+                  lineHeight: 1,
+                }}
+              >
+                <span>{t.label}</span>
+                <CloseOutlined
+                  role="button"
+                  aria-label={`${t.label} 닫기`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeTab(t.path);
+                  }}
+                  style={{ fontSize: 10, opacity: 0.7 }}
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        <Space style={{ flex: '0 0 auto' }}>
           {/* 표시용이다 — 서버는 JWT claim 을 쓰고 이 값을 신뢰하지 않는다(FR-Bank-08) */}
           <Tag color="blue">
             {user.companyId} / {user.entityId}
@@ -91,7 +126,16 @@ export function AppLayout() {
             menu={{
               items: [
                 { key: 'pw', label: '비밀번호 변경', onClick: () => nav('/account/password') },
-                { key: 'out', label: '로그아웃', danger: true, onClick: () => { logout(); nav('/login'); } },
+                {
+                  key: 'out',
+                  label: '로그아웃',
+                  danger: true,
+                  onClick: () => {
+                    logout();
+                    reset();
+                    nav('/login');
+                  },
+                },
               ],
             }}
           >
@@ -103,7 +147,7 @@ export function AppLayout() {
         <Layout.Sider width={200} theme="light">
           <Menu
             mode="inline"
-            items={items}
+            items={MENU_GROUPS}
             selectedKeys={[loc.pathname]}
             defaultOpenKeys={['system', 'finance']}
             onClick={(e) => nav(e.key)}

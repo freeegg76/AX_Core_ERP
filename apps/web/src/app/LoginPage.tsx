@@ -28,7 +28,7 @@ export function LoginPage() {
             setBusy(true);
             try {
               await login(v.user_id, v.password);
-              nav('/system/companies');
+              nav('/');
             } catch (e) {
               setErr((e as Error).message);
             } finally {

@@ -1,6 +1,7 @@
 import { Card, Typography } from 'antd';
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 import { AppLayout } from './AppLayout';
+import { HomePage } from './HomePage';
 import { LoginPage } from './LoginPage';
 import { PasswordPage } from './PasswordPage';
 import {
@@ -31,7 +32,7 @@ export const router = createBrowserRouter([
     path: '/',
     element: <AppLayout />,
     children: [
-      { index: true, element: <Navigate to="/system/companies" replace /> },
+      { index: true, element: <HomePage /> },
       { path: 'account/password', element: <PasswordPage /> },
 
       { path: 'system/companies', element: <CompanyScreen /> },
