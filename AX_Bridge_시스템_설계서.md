@@ -1,13 +1,14 @@
 # AX Bridge 시스템 설계서
 
-> **문서 목적** — SYSTEM / PARTNER / SALES / FINANCE 4개 도메인으로 구성된 내부 ERP/CRM 성격 업무 시스템 *AX Bridge* 를 구현하기 위한 단일 통합 설계서.
+> **문서 목적** — SYSTEM / PARTNER / SALES / FINANCE 4개 도메인으로 구성된 내부 ERP/CRM 성격 업무 시스템 _AX Bridge_ 를 구현하기 위한 단일 통합 설계서.
 > React + TypeScript + NestJS + Prisma + Microsoft SQL Server 스택 위에서 **Modular Monolith + DDD-lite + Clean Architecture** 로 구현한다.
 >
 > **근거 문서**
+>
 > - `AX_Bridge_MSSQL_Development_Guideline.md` (개발 지침 33개 절)
 > - `AX_Bridge.xlsx` — 테이블 명세서 / FR(기능요구) / UC(유스케이스)
-> - `AX_Bridge_DB_API_명세서.xlsx` — 저장 프로시저 74건 · 트리거 10건 · API 92건
-> - `01~08_*.sql` — 실제 MSSQL DDL · 프로시저 · 트리거 · 표준 GL Seed · v3 개정분
+> - `AX_Bridge_DB_API_명세서.xlsx` v3.0 — 저장 프로시저 75건 · 트리거 10건 · API 94건 (구현 대조본)
+> - `01~09_*.sql` — 실제 MSSQL DDL · 프로시저 · 트리거 · 표준 GL Seed · v3 개정분 · 결함수정
 > - 화면기획서 4종 (SYSTEM / PARTNER / SALES / FINANCE v3.0)
 >
 > **버전 기준** — DB/API 명세 v2.0 (FINANCE 화면기획서 v3.0 = 10차 개정, 마감관리·연도이월·초기이월 bank_id 반영). DB명 `AX_Bridge`.
@@ -48,23 +49,23 @@
 
 AX Bridge는 그룹/회사 단위로 조직·거래처·영업·회계를 통합 관리하는 내부 업무 시스템이다. 4개 도메인이 강하게 연결되어 있어 초기에는 마이크로서비스로 분리하지 않고 **모듈러 모놀리스**로 구현하되, 도메인 경계는 코드 수준에서 명확히 유지한다.
 
-| 도메인 | 책임 | 주요 메뉴 |
-|--------|------|-----------|
-| **SYSTEM** | 조직 기준정보 · 인증/권한 기초 | 그룹, 회사, Pod, 부서, 직원, 회사 기수, 초기 Admin |
-| **PARTNER** | 거래 상대 · 지급/수금 정책 | 고객사, 거래처, 지급정책(Payment Term) |
-| **SALES** | 영업 파이프라인 · 활동 · 계약 | 파이프라인, 고객 액티비티, 계약 |
-| **FINANCE** | 회계 기준정보 · 전표 · 마감 | 계정과목(GL), 관리항목(Dimension), 은행/카드, 초기이월, 전표(Ledger), 마감관리(Closing) |
+| 도메인      | 책임                           | 주요 메뉴                                                                               |
+| ----------- | ------------------------------ | --------------------------------------------------------------------------------------- |
+| **SYSTEM**  | 조직 기준정보 · 인증/권한 기초 | 그룹, 회사, Pod, 부서, 직원, 회사 기수, 초기 Admin                                      |
+| **PARTNER** | 거래 상대 · 지급/수금 정책     | 고객사, 거래처, 지급정책(Payment Term)                                                  |
+| **SALES**   | 영업 파이프라인 · 활동 · 계약  | 파이프라인, 고객 액티비티, 계약                                                         |
+| **FINANCE** | 회계 기준정보 · 전표 · 마감    | 계정과목(GL), 관리항목(Dimension), 은행/카드, 초기이월, 전표(Ledger), 마감관리(Closing) |
 
 **규모 요약** (원본 산출물 실측)
 
-| 항목 | 수량 | 근거 |
-|------|------|------|
-| 업무 테이블 | **20종** (+ 표준 GL 원본 `finance_GL_seed` = **DDL 21종**) | `01` 20 CREATE TABLE + `08` `finance_closing` 1건. 테이블 명세서(xlsx)는 `finance_GL_seed` 를 다루지 않아 20종 |
-| 저장 프로시저 | **74건** (+ 본 설계서 신설 `usp_finance_closing_reopen` = **75건**) | `02` 24 · `03` 12 · `04` 12 · `05` 23 = 71, `08`의 11개 CREATE 중 **신규 3건**(나머지 8건은 `05` 교체) |
-| 트리거 | **10건** | `06` 9건 + `08` 신규 1건. `08`이 `06`의 3건을 교체 |
-| REST 엔드포인트 | **92건** (+ 신설 마감해제 1건 = **93건**) | AUTH 3 · SYSTEM 28 · PARTNER 15 · SALES 15 · FINANCE 31 |
-| FR | **179건** | COMMON 7 · SYSTEM 55 · PARTNER 24 · SALES 25 · FINANCE 68 |
-| UC | **135건** | 20개 접두어. 최다 UC-Ledger 13건 |
+| 항목            | 수량                                                                | 근거                                                                                                           |
+| --------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 업무 테이블     | **20종** (+ 표준 GL 원본 `finance_GL_seed` = **DDL 21종**)          | `01` 20 CREATE TABLE + `08` `finance_closing` 1건. 테이블 명세서(xlsx)는 `finance_GL_seed` 를 다루지 않아 20종 |
+| 저장 프로시저   | **74건** (+ 본 설계서 신설 `usp_finance_closing_reopen` = **75건**) | `02` 24 · `03` 12 · `04` 12 · `05` 23 = 71, `08`의 11개 CREATE 중 **신규 3건**(나머지 8건은 `05` 교체)         |
+| 트리거          | **10건**                                                            | `06` 9건 + `08` 신규 1건. `08`이 `06`의 3건을 교체                                                             |
+| REST 엔드포인트 | **92건** (+ 마감해제 1건 + 계정변경 미리보기 1건 = **94건**)        | AUTH 3 · SYSTEM 28 · PARTNER 15 · SALES 15 · FINANCE 33                                                        |
+| FR              | **180건** (+ 마감해제 `FR-Close-12`)                                | COMMON 7 · SYSTEM 55 · PARTNER 24 · SALES 25 · FINANCE 69                                                      |
+| UC              | **135건**                                                           | 20개 접두어. 최다 UC-Ledger 13건                                                                               |
 
 > **단일통화 전제** — `partner_client`/`partner_vendor` 에 `default_billing_currency varchar(10)` 컬럼이 있으나 이를 사용하는 FR은 **0건**이고, `finance_ledger_detail`·`sales_contract` 에 통화 컬럼이 없다. 따라서 **다통화·환산은 본 설계 범위 외**로 하고 모든 금액을 단일 통화(원화)로 취급한다. 해당 컬럼은 거래처 참고 속성으로만 보존한다.
 
@@ -120,12 +121,12 @@ Infrastructure (Prisma · MSSQL Repository · Query Service · Mapper)
 
 납품물에는 완결된 **저장 프로시저 74건 + 트리거 10건** 이 포함되어 있고, 지침은 **NestJS+Prisma 기반 DDD** 를 요구한다. 본 설계서는 다음 전략으로 둘을 화해시킨다.
 
-| 관심사 | 소유 위치 | 근거 |
-|--------|-----------|------|
-| 업무 규칙의 **1차 권위** (승인 가능 여부, 차대 균형, Slot 매핑, 마감 잠금 등) | Domain Entity / Policy | 지침 §17·§18·§19·§29 |
-| 쓰기 트랜잭션의 **실행** | Infrastructure Repository → **제공된 저장 프로시저 호출** (TRY/CATCH·트랜잭션·THROW 50xxx 내장) | 명세의 `usp_*` |
-| 조회 | Query Service → Prisma 또는 최적화 SELECT (또는 `usp_*_list/get` 호출) | 지침 §14·§15 |
-| **DB 계층 이중 방어** | 트리거 (프로시저 우회 직접 DML 차단) | 명세 트리거 목록 |
+| 관심사                                                                        | 소유 위치                                                                                       | 근거                 |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------- |
+| 업무 규칙의 **1차 권위** (승인 가능 여부, 차대 균형, Slot 매핑, 마감 잠금 등) | Domain Entity / Policy                                                                          | 지침 §17·§18·§19·§29 |
+| 쓰기 트랜잭션의 **실행**                                                      | Infrastructure Repository → **제공된 저장 프로시저 호출** (TRY/CATCH·트랜잭션·THROW 50xxx 내장) | 명세의 `usp_*`       |
+| 조회                                                                          | Query Service → Prisma 또는 최적화 SELECT (또는 `usp_*_list/get` 호출)                          | 지침 §14·§15         |
+| **DB 계층 이중 방어**                                                         | 트리거 (프로시저 우회 직접 DML 차단)                                                            | 명세 트리거 목록     |
 
 즉, 저장 프로시저는 "잘 검증된 트랜잭션 실행 단위"로서 Infrastructure Repository의 구현 수단이 되고, Domain은 프로시저 호출 **이전에** 동일 규칙을 표현하여 코드 가독성·테스트성·오류 UX를 확보한다. 트리거는 애플리케이션을 우회한 DML(수동 SQL, 배치)에 대한 최후의 방어선이며 정상 경로는 `SESSION_CONTEXT` 플래그(`ax_ledger_approve`, `ax_openbal_admin`, `ax_bypass_gl_protect`)로 통과한다.
 
@@ -137,33 +138,37 @@ Infrastructure (Prisma · MSSQL Repository · Query Service · Mapper)
 
 원본 산출물 교차검증 결과 확정된 결정. 이하 각 절은 이 표를 참조한다.
 
-| # | 결정 | 요지 | 상세 |
-|---|------|------|------|
-| **D1** | 프로시저 실행 = **node-mssql 병용** | 쓰기는 `mssql` 드라이버로 프로시저 직접 실행, 읽기는 Prisma | [§10.2](#102-프로시저-실행-계층-d1) |
-| **D2** | 목록 조회는 **Query Service(Prisma/최적화 SELECT)** 로 전환 | 페이징·정렬은 애플리케이션이 담당. `usp_*_list` 는 Lookup 팝업 전용 | [§10.3](#103-command--query-분리와-조회페이징-전략-d2) |
-| **D3** | **`09_AX_Bridge_Fix.sql` 신설** | `01~08` 은 납품 원본으로 동결, 모든 수정은 멱등한 `09` 에 집약. **예외 1건** — `01` 의 FK 길이 불일치는 테이블이 생성조차 되지 않아 `09` 로 고칠 수 없으므로 `01` 에서 직접 수정했다 | [부록 C](#부록-c-09_ax_bridge_fixsql-스펙) |
-| **D4** | **연도 회계마감 해제 기능 추가** | `usp_finance_closing_reopen` + `POST /finance/closings/{yearId}/reopen`(ADMIN) | [§9.6](#96-연도-회계마감-해제-d4--신설) |
-| **D5** | 09_fix 범위 = **버그 + 무결성만** | 배포 차단·데이터 오염 유발 제약만 추가. 단순 열거형 CHECK 8종은 Domain Enum + 프로시저 검증에 위임 | [부록 C](#부록-c-09_ax_bridge_fixsql-스펙) |
-| **D6** | 정수형 컬럼 타입은 **DB 유지** | `numeric(10,2)` 그대로 두고 Mapper/DTO 경계에서 `number` 정규화 | [§8.1](#81-데이터-타입-기준-지침-8-9) |
-| **D7** | 마감 이월 **음수 허용** | `amount >= 0` CHECK 를 추가하지 않고, 합계 집계·화면 표시가 음수를 상쇄하도록 보정 | [§9.5](#95-연도-회계마감-이월-계산-fr-close-0510) |
-| **D8** | **`approved_date` 만 `datetime2(0)` 상향** | 나머지 업무일자는 `date` 유지, 세밀한 이력은 `common/audit` 로깅이 담당 | [§8.1](#81-데이터-타입-기준-지침-8-9) |
+| #      | 결정                                                        | 요지                                                                                                                                                                                 | 상세                                                   |
+| ------ | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| **D1** | 프로시저 실행 = **node-mssql 병용**                         | 쓰기는 `mssql` 드라이버로 프로시저 직접 실행, 읽기는 Prisma                                                                                                                          | [§10.2](#102-프로시저-실행-계층-d1)                    |
+| **D2** | 목록 조회는 **Query Service(Prisma/최적화 SELECT)** 로 전환 | 페이징·정렬은 애플리케이션이 담당. `usp_*_list` 는 Lookup 팝업 전용                                                                                                                  | [§10.3](#103-command--query-분리와-조회페이징-전략-d2) |
+| **D3** | **`09_AX_Bridge_Fix.sql` 신설**                             | `01~08` 은 납품 원본으로 동결, 모든 수정은 멱등한 `09` 에 집약. **예외 1건** — `01` 의 FK 길이 불일치는 테이블이 생성조차 되지 않아 `09` 로 고칠 수 없으므로 `01` 에서 직접 수정했다 | [부록 C](#부록-c-09_ax_bridge_fixsql-스펙)             |
+| **D4** | **연도 회계마감 해제 기능 추가**                            | `usp_finance_closing_reopen` + `POST /finance/closings/{yearId}/reopen`(ADMIN)                                                                                                       | [§9.6](#96-연도-회계마감-해제-d4--신설)                |
+| **D5** | 09_fix 범위 = **버그 + 무결성만**                           | 배포 차단·데이터 오염 유발 제약만 추가. 단순 열거형 CHECK 8종은 Domain Enum + 프로시저 검증에 위임                                                                                   | [부록 C](#부록-c-09_ax_bridge_fixsql-스펙)             |
+| **D6** | 정수형 컬럼 타입은 **DB 유지**                              | `numeric(10,2)` 그대로 두고 Mapper/DTO 경계에서 `number` 정규화                                                                                                                      | [§8.1](#81-데이터-타입-기준-지침-8-9)                  |
+| **D7** | 마감 이월 **음수 허용**                                     | `amount >= 0` CHECK 를 추가하지 않고, 합계 집계·화면 표시가 음수를 상쇄하도록 보정                                                                                                   | [§9.5](#95-연도-회계마감-이월-계산-fr-close-0510)      |
+| **D8** | **`approved_date` 만 `datetime2(0)` 상향**                  | 나머지 업무일자는 `date` 유지, 세밀한 이력은 `common/audit` 로깅이 담당                                                                                                              | [§8.1](#81-데이터-타입-기준-지침-8-9)                  |
 
 ---
 
 ## 3. 기술 스택
 
 ### Frontend
+
 React · TypeScript · Vite · Ant Design · **AG Grid**(Head/Detail 그리드) · TanStack Query · React Hook Form · **Zod**(스키마 검증) · Zustand · Vitest · Playwright
 
 ### Backend
+
 NestJS · TypeScript · **Prisma ORM**(조회) · **`mssql`(node-mssql / tedious)**(쓰기 — 프로시저 실행, OUTPUT 파라미터·다중 결과셋) · Passport · JWT(Access 30분 / Refresh 14일) · **Argon2id**(비밀번호 해시) · OpenAPI/Swagger · Jest
 
 > **D1** — Prisma 단독으로는 제공된 프로시저를 실행할 수 없어 `mssql` 드라이버를 병용한다. 근거와 구조는 [§10.2](#102-프로시저-실행-계층-d1) 참조. `@prisma/adapter-mssql` 은 Prisma 측 커넥션에만 사용한다.
 
 ### Database
+
 Microsoft SQL Server 2016+ (OPENJSON · SESSION_CONTEXT 사용) · DB명 `AX_Bridge` · Prisma Migration + 필요 시 Custom T-SQL Migration
 
 ### Monorepo / Tooling
+
 pnpm workspace · Turborepo · Docker Compose · ESLint · Prettier · VS Code · Claude
 
 ---
@@ -185,7 +190,7 @@ ax-bridge/
 │  ├─ schema.prisma
 │  ├─ migrations/
 │  └─ seed/standard-gl/         # 표준 GL Seed (07_AX_Bridge_Seed_GL.sql)
-├─ db/                          # 원본 SQL 자산 (01~08) — 마이그레이션 소스
+├─ db/                          # 원본 SQL 자산 (01~09) — 마이그레이션 소스
 ├─ docs/spec/{system,partner,sales,finance}/ · erd/ · api/
 ├─ docker-compose.yml · pnpm-workspace.yaml · turbo.json · prisma.config.ts
 ├─ CLAUDE.md · README.md
@@ -240,6 +245,7 @@ shared/
 업무 테이블은 원칙적으로 `(company_id, entity_id, …)` 복합키를 갖는다. `company_id` = 그룹, `entity_id` = 회사로 해석한다.
 
 > **원칙의 예외 2건 (DDL 실측)**
+>
 > - **`finance_GL_seed`** — 스코프 컬럼이 아예 없다. PK는 `(gl_id)` 단독이며 전 회사가 공유하는 **전역 표준 GL 원본**이다. 재생성 프로시저가 `company_id`/`entity_id` 를 세션값으로 치환하며 복제한다.
 > - **`finance_open_balance`** — **PRIMARY KEY 가 없다**(현재 힙 테이블). 유일성은 `UX_open_balance` 유니크 인덱스로만 보장된다. → D3/D5에 따라 [부록 C](#부록-c-09_ax_bridge_fixsql-스펙)에서 PK를 추가한다.
 
@@ -248,8 +254,8 @@ shared/
 ```typescript
 export class CompanyScope {
   constructor(
-    public readonly companyId: string,   // 그룹코드 varchar(10)
-    public readonly entityId: string,    // 회사코드 varchar(10)
+    public readonly companyId: string, // 그룹코드 varchar(10)
+    public readonly entityId: string, // 회사코드 varchar(10)
   ) {}
 }
 ```
@@ -259,7 +265,10 @@ Repository 인터페이스는 항상 `scope` 를 첫 인자로 받는다.
 ```typescript
 export interface ClientRepository {
   findById(scope: CompanyScope, clientId: string): Promise<Client | null>;
-  findAll(scope: CompanyScope, condition: ClientSearchCondition): Promise<Client[]>;
+  findAll(
+    scope: CompanyScope,
+    condition: ClientSearchCondition,
+  ): Promise<Client[]>;
   save(scope: CompanyScope, client: Client): Promise<void>;
 }
 ```
@@ -293,6 +302,7 @@ PUT  /auth/password  {current_password, new_password}   # 본인 변경
 > `usp_auth_get_credential` 은 **전체 74개 프로시저 중 `user_pass` 를 반환하는 유일한 프로시저**이며 `user_yn=1 AND status<>'inactive'` 조건이 내장되어 있다. `usp_system_employee_list`/`_get` 은 해시를 컬럼 목록에서 명시적으로 제외한다.
 
 **비밀번호 정책 (FR-Emp-04/05, FR-Admin-03)**
+
 - `user_pass varchar(255)` 에는 Argon2id(권장)/bcrypt 해시만 저장. 평문·복호화 금지.
 - 해시 생성·검증은 WAS(애플리케이션) 담당. `usp_auth_get_credential` 은 API 응답으로 절대 노출하지 않는다.
 - 수정 시 비밀번호 미입력이면 기존 해시 유지, 입력 시 새 솔트로 재해시.
@@ -308,13 +318,13 @@ VIEWER (조회) < EDITOR (등록/수정/삭제) < APPROVER (전표 승인·초�
 
 **ADMIN 전용 행위 5종** (API 명세 실측) — "마감해제"라는 한 단어에 **성질이 다른 두 기능**이 섞여 있어 다음과 같이 분리한다.
 
-| 행위 | 엔드포인트 | 프로시저 |
-|------|-----------|----------|
-| **초기이월 확정해제** (`open_balance.closed` → 0) | `POST /finance/open-balances/reopen` | `usp_finance_openbalance_reopen` |
-| **연도 회계마감 해제** (`finance_closing.closing` → 0) | `POST /finance/closings/{yearId}/reopen` | `usp_finance_closing_reopen` — **D4 신설**, [§9.6](#96-연도-회계마감-해제-d4--신설) |
-| 연도 회계마감 실행 | `POST /finance/closings/{yearId}/execute` | `usp_finance_closing_execute` |
-| 표준 GL 재생성 | `POST /finance/gl/generate-standard` | `usp_finance_gl_generate_standard` |
-| 비밀번호 초기화 · 직원 삭제 | `PUT /system/employees/{employeeId}/password` · `DELETE /system/employees/{employeeId}` | `usp_auth_change_password` · `usp_system_employee_delete` |
+| 행위                                                   | 엔드포인트                                                                              | 프로시저                                                                            |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| **초기이월 확정해제** (`open_balance.closed` → 0)      | `POST /finance/open-balances/reopen`                                                    | `usp_finance_openbalance_reopen`                                                    |
+| **연도 회계마감 해제** (`finance_closing.closing` → 0) | `POST /finance/closings/{yearId}/reopen`                                                | `usp_finance_closing_reopen` — **D4 신설**, [§9.6](#96-연도-회계마감-해제-d4--신설) |
+| 연도 회계마감 실행                                     | `POST /finance/closings/{yearId}/execute`                                               | `usp_finance_closing_execute`                                                       |
+| 표준 GL 재생성                                         | `POST /finance/gl/generate-standard`                                                    | `usp_finance_gl_generate_standard`                                                  |
+| 비밀번호 초기화 · 직원 삭제                            | `PUT /system/employees/{employeeId}/password` · `DELETE /system/employees/{employeeId}` | `usp_auth_change_password` · `usp_system_employee_delete`                           |
 
 - 조회전용 사용자는 편집 API 호출 시 403 (FR-UI-02·FR-UI-07).
 - **계층 밖 3건** — `POST /auth/login` · `POST /auth/refresh` 는 **공개**, `PUT /auth/password` 는 **로그인 사용자 본인**(Role 무관).
@@ -330,12 +340,12 @@ VIEWER (조회) < EDITOR (등록/수정/삭제) < APPROVER (전표 승인·초�
 
 시드 값 (`01` Bootstrap 섹션, 전부 `WHERE NOT EXISTS` 가드):
 
-| 테이블 | 값 |
-|--------|----|
-| `system_company` | `SYSTEM` / `System` / `시스템` / status 0 |
-| `system_entity` | `SYSTEM`·`SYSTEM` / `System` / `시스템` / status 0 |
-| `system_pod` | `SYS` / `System Pod` |
-| `system_team` | `SYS` / `System` / owner=`ADMIN` · leader=`ADMIN` ← **직원 행보다 먼저 삽입**(owner/leader에 FK가 없어서 가능) |
+| 테이블            | 값                                                                                                                                        |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `system_company`  | `SYSTEM` / `System` / `시스템` / status 0                                                                                                 |
+| `system_entity`   | `SYSTEM`·`SYSTEM` / `System` / `시스템` / status 0                                                                                        |
+| `system_pod`      | `SYS` / `System Pod`                                                                                                                      |
+| `system_team`     | `SYS` / `System` / owner=`ADMIN` · leader=`ADMIN` ← **직원 행보다 먼저 삽입**(owner/leader에 FK가 없어서 가능)                            |
 | `system_employee` | `ADMIN` / `Built-in Admin` / status `active` / `user_yn=1` / `user_id='admin'` / `user_pass='{ARGON2ID_HASH_OF_admin__SET_BY_INSTALLER}'` |
 
 ---
@@ -359,9 +369,18 @@ FiscalYear (회사 기수) ── Entity
 `Employee` · `UserAccount` · `Role` · `Permission` · `AuthenticationService` · `PasswordHasher`.
 
 Employee 재직상태(Enum):
+
 ```typescript
-enum EmploymentStatus { Planned, Probation, Active, OnLeave, LeavingSoon, Inactive }
+enum EmploymentStatus {
+  Planned,
+  Probation,
+  Active,
+  OnLeave,
+  LeavingSoon,
+  Inactive,
+}
 ```
+
 - `Inactive` 는 인증 차단(FR-Emp-07). Inactive 전환 시 퇴사일 미입력이면 트리거가 당일로 보완.
 
 ### 7.2 PARTNER
@@ -376,12 +395,16 @@ PaymentTerm (지급/수금정책)
 
 ```typescript
 export interface PaymentTermStrategy {
-  calculate(baseDate: Date): Date;   // 기준일 → 지급/입금일
+  calculate(baseDate: Date): Date; // 기준일 → 지급/입금일
 }
 // EOM+N  : 기준월 말일 + offset_days
-export class EomPaymentTermStrategy implements PaymentTermStrategy { /* base_rule='EOM' */ }
+export class EomPaymentTermStrategy implements PaymentTermStrategy {
+  /* base_rule='EOM' */
+}
 // CurM DD: 기준월 DD일 (월말 초과 시 월말 보정)
-export class CurrentMonthPaymentTermStrategy implements PaymentTermStrategy { /* base_rule='CURM' */ }
+export class CurrentMonthPaymentTermStrategy implements PaymentTermStrategy {
+  /* base_rule='CURM' */
+}
 ```
 
 - 표시용 정책식 `term_condition` 은 트리거 `trg_partner_term_condition` 이 `EOM+{offset_days}` / `CurM{fixed_day}` 로 자동 구성한다(FR-Term-05).
@@ -402,17 +425,19 @@ Contract (계약)        ── Entity, Client, Pipeline(선택), Ledger(선택 
 // 권장: 의미 있는 메서드 — 내부에서 날짜/검증/상태를 함께 처리
 pipeline.moveToMeeting();
 pipeline.moveToNegotiation();
-pipeline.close();     // stage=Closed(5) → closed_date 기록
-pipeline.cancel();    // stage=Canceled(6) → closed_date 기록
-pipeline.reopen();    // closed_date 해제
+pipeline.close(); // stage=Closed(5) → closed_date 기록
+pipeline.cancel(); // stage=Canceled(6) → closed_date 기록
+pipeline.reopen(); // closed_date 해제
 ```
 
 Stage(Enum): `Lead(0) · QualifiedLead(1) · Suggest(2) · Meeting(3) · Nego(4) · Closed(5) · Canceled(6)` (FR-Pipe-07).
+
 - 수정 시 `adjusted_date`, Closed/Canceled 진입 시 `closed_date` 를 트리거 `trg_sales_pipeline_audit` 가 관리. 재오픈 시 트리거가 `closed_date` 를 NULL로 해제한다.
 - 계약 연결 시 파이프라인 `client_name` 과 계약 고객사명 일치 검증(FR-Pipe-08).
 - **위 메서드는 Domain 표현일 뿐 별도 엔드포인트가 아니다.** stage 전환은 모두 `PUT /sales/pipelines/{pipelineId}` → `usp_sales_pipeline_save(U)` 로 수행된다([§11.3](#113-업무-행위-endpoint-지침-23) 참조).
 
 **Activity 첨부 (FR-Act-06)** — `attached` 는 **파일 업로드가 아니라 URL/링크 문자열 필드**(`varchar(250)`)다. 업로드·스토리지 요구는 FR에 없다.
+
 - `Activity` VO 로 링크 형식을 검증한다: 스킴 허용목록(`http`/`https`), 길이 250자 이내, 공백 문자 불허. 검증 실패 시 저장 거부.
 - `activity_id` 는 미입력 시 프로시저가 자동 생성한다 — [§9.12](#912-식별자-자동생성-규칙) 참조.
 
@@ -445,13 +470,21 @@ finance/ledger/domain/
 ```
 
 Enum 예:
+
 ```typescript
-enum ApprovalStatus { Pending = 'PENDING', Approved = 'APPROVED' }   // DB bit 0/1
-enum DebitCredit { Debit = '1', Credit = '2' }
+enum ApprovalStatus {
+  Pending = "PENDING",
+  Approved = "APPROVED",
+} // DB bit 0/1
+enum DebitCredit {
+  Debit = "1",
+  Credit = "2",
+}
 type DimensionSlot = 1 | 2 | 3 | 4 | 5;
 ```
 
 Entity가 현재 상태에서 허용되지 않는 행위를 거부한다:
+
 ```typescript
 ledger.approve(approverId);   // 미승인 + 라인 존재 + 차대균형일 때만
 ledger.changeLine(...);       // 승인/마감연도면 거부
@@ -489,26 +522,27 @@ changeLineAccount(lineNo: LineNo, newGl: GlFlags): Layer3Diff {
 
 ### 8.1 데이터 타입 기준 (지침 §8, §9)
 
-| 종류 | 타입 | 예 |
-|------|------|----|
-| 업무 코드(영문/숫자) | `VARCHAR(10~20)` | company_id, gl_id, client_id |
-| 사용자 표시 문자열(한글/이름/설명) | `NVARCHAR(50~1000)` | company_name_ko, gl_name, note |
-| Boolean | `BIT` (Domain은 Enum) | status, approval_status, closed, user_yn |
-| 금액 | `NUMERIC(18, 2)` — **float 금지** | amount, contract_amount |
-| 날짜(업무일자) | `DATE` | ledger_date, due_date, start_date, insert_date, closing_date |
-| 일시(감사) | `DATETIME2(0)` | last_login, last_manual_edit_at, **approved_date**(D8) |
-| (신규 PK 권장) | `UNIQUEIDENTIFIER` + 업무 UNIQUE | — |
+| 종류                               | 타입                              | 예                                                           |
+| ---------------------------------- | --------------------------------- | ------------------------------------------------------------ |
+| 업무 코드(영문/숫자)               | `VARCHAR(10~20)`                  | company_id, gl_id, client_id                                 |
+| 사용자 표시 문자열(한글/이름/설명) | `NVARCHAR(50~1000)`               | company_name_ko, gl_name, note                               |
+| Boolean                            | `BIT` (Domain은 Enum)             | status, approval_status, closed, user_yn                     |
+| 금액                               | `NUMERIC(18, 2)` — **float 금지** | amount, contract_amount                                      |
+| 날짜(업무일자)                     | `DATE`                            | ledger_date, due_date, start_date, insert_date, closing_date |
+| 일시(감사)                         | `DATETIME2(0)`                    | last_login, last_manual_edit_at, **approved_date**(D8)       |
+| (신규 PK 권장)                     | `UNIQUEIDENTIFIER` + 업무 UNIQUE  | —                                                            |
 
 **명세 vs 지침 vs 납품 DDL 의 3중 편차** — 상충 시 **납품 DDL이 정본**이다. 테이블 명세서(xlsx) 값으로 되돌리지 말 것.
 
-| 항목 | 지침 §8·§9·§11 | 테이블 명세서(xlsx) | **납품 DDL (정본)** | 본 설계서 |
-|------|----------------|---------------------|---------------------|-----------|
-| PK 전략 | `UNIQUEIDENTIFIER` 기술 PK + 업무 UNIQUE | 복합 업무 PK | **복합 업무 PK** | DDL 채택. 프로시저·트리거·API 92건이 모두 이 키에 의존. 향후 **신규** 테이블은 지침 전략 우선 검토 |
-| 한글 표시 문자열 | `NVARCHAR` | `varchar` | **`nvarchar`** | DDL 채택 (지침과 일치, xlsx가 오기) |
-| 금액 | `DECIMAL(19,2)` | `numeric(10,2)` | **`numeric(18,2)`** | DDL 채택. xlsx의 `(10,2)` 는 최대 99,999,999.99 로 원화 업무에 부족 — **DDL이 이미 18로 상향**했다. DDL에 `DECIMAL` 키워드는 0회, 전부 `numeric` |
-| `ledger_no` | `INT` | `numeric(10,2)` | **`numeric(10,2)`** | **D6** — DB 유지, 경계에서 변환 (아래) |
+| 항목             | 지침 §8·§9·§11                           | 테이블 명세서(xlsx) | **납품 DDL (정본)** | 본 설계서                                                                                                                                        |
+| ---------------- | ---------------------------------------- | ------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| PK 전략          | `UNIQUEIDENTIFIER` 기술 PK + 업무 UNIQUE | 복합 업무 PK        | **복합 업무 PK**    | DDL 채택. 프로시저·트리거·API 94건이 모두 이 키에 의존. 향후 **신규** 테이블은 지침 전략 우선 검토                                               |
+| 한글 표시 문자열 | `NVARCHAR`                               | `varchar`           | **`nvarchar`**      | DDL 채택 (지침과 일치, xlsx가 오기)                                                                                                              |
+| 금액             | `DECIMAL(19,2)`                          | `numeric(10,2)`     | **`numeric(18,2)`** | DDL 채택. xlsx의 `(10,2)` 는 최대 99,999,999.99 로 원화 업무에 부족 — **DDL이 이미 18로 상향**했다. DDL에 `DECIMAL` 키워드는 0회, 전부 `numeric` |
+| `ledger_no`      | `INT`                                    | `numeric(10,2)`     | **`numeric(10,2)`** | **D6** — DB 유지, 경계에서 변환 (아래)                                                                                                           |
 
 > **D6 · 정수형 Decimal 정책** — `ledger_no`·`line_on`·`line_no`·`company_year`·`actual_year` 는 정수 의미인데 `numeric(10,2)` 로 선언되어 있다. 프로시저도 곳곳에서 `CONVERT(int, actual_year)` 로 되돌린다. PK/FK/유니크 인덱스와 74개 프로시저 시그니처가 전부 이 타입에 묶여 있으므로 **DB 타입은 변경하지 않는다.** 대신:
+>
 > - Prisma는 이 컬럼을 `Decimal` 로 매핑하며 **JSON 직렬화 시 문자열이 된다.** 그대로 API에 노출하면 프론트엔드에서 `"3"` vs `3` 혼선이 발생한다.
 > - **Mapper/Query DTO 경계에서 반드시 `number` 로 정규화한다.** 반대로 프로시저 인자 바인딩 시 `sql.Numeric(10,2)` 로 되돌린다.
 > - Domain VO(`LedgerNumber`, `LineNo`)는 정수만 허용하고, 소수부가 있는 값을 만나면 예외를 던진다(데이터 오염 탐지).
@@ -519,48 +553,48 @@ changeLineAccount(lineNo: LineNo, newGl: GlFlags): Layer3Diff {
 
 ### 8.2 SYSTEM 테이블
 
-| 테이블 | PK | 주요 컬럼 | 비고 |
-|--------|----|-----------|----|
-| `system_company` | (company_id) | company_name, company_name_ko, status | 그룹. status 0:사용 1:미사용 |
-| `system_entity` | (company_id, entity_id) | 회사명, 대표자, 사업자/법인번호, 주소, 설립일… | FK→company |
-| `system_pod` | (company_id, entity_id, pod_id) | pod_name, status | pod_id varchar(4) |
-| `system_team` | (…, Team_id) | team_name(_ko), owner, leader_user_id, pod_id | owner/leader = employee (순환참조로 FK 미적용, 프로시저 검증) |
-| `system_employee` | (…, employee_Id) | 인사정보, status(CHECK 6종), user_yn, user_id, user_pass, last_login | user_id 전역 UNIQUE(WHERE user_id IS NOT NULL) |
-| `system_year` | (…, company_year_id) | company_year, actual_year | UNIQUE(…, actual_year, company_year) |
+| 테이블            | PK                              | 주요 컬럼                                                            | 비고                                                          |
+| ----------------- | ------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `system_company`  | (company_id)                    | company_name, company_name_ko, status                                | 그룹. status 0:사용 1:미사용                                  |
+| `system_entity`   | (company_id, entity_id)         | 회사명, 대표자, 사업자/법인번호, 주소, 설립일…                       | FK→company                                                    |
+| `system_pod`      | (company_id, entity_id, pod_id) | pod_name, status                                                     | pod_id varchar(4)                                             |
+| `system_team`     | (…, Team_id)                    | team_name(\_ko), owner, leader_user_id, pod_id                       | owner/leader = employee (순환참조로 FK 미적용, 프로시저 검증) |
+| `system_employee` | (…, employee_Id)                | 인사정보, status(CHECK 6종), user_yn, user_id, user_pass, last_login | user_id 전역 UNIQUE(WHERE user_id IS NOT NULL)                |
+| `system_year`     | (…, company_year_id)            | company_year, actual_year                                            | UNIQUE(…, actual_year, company_year)                          |
 
 ### 8.3 PARTNER 테이블
 
-| 테이블 | PK | 주요 컬럼 | 제약 |
-|--------|----|-----------|----|
-| `partner_term` | (…, term_id) | base_rule(EOM/CURM), fixed_day, offset_days, term_condition, status | CHECK: EOM→fixed_day NULL, CURM→fixed_day 1~31 & offset=0 |
-| `partner_client` | (…, client_id) | client_name, collecting_type(→term), 사업자·은행·연락정보 | FK→entity, term |
-| `partner_vendor` | (…, vendor_id) | vendor_name, payment_type(→term), 상동 | FK→entity, term |
+| 테이블           | PK             | 주요 컬럼                                                           | 제약                                                      |
+| ---------------- | -------------- | ------------------------------------------------------------------- | --------------------------------------------------------- |
+| `partner_term`   | (…, term_id)   | base_rule(EOM/CURM), fixed_day, offset_days, term_condition, status | CHECK: EOM→fixed_day NULL, CURM→fixed_day 1~31 & offset=0 |
+| `partner_client` | (…, client_id) | client_name, collecting_type(→term), 사업자·은행·연락정보           | FK→entity, term                                           |
+| `partner_vendor` | (…, vendor_id) | vendor_name, payment_type(→term), 상동                              | FK→entity, term                                           |
 
 status: 1=Y(active/사용), 0=N(pending).
 
 ### 8.4 SALES 테이블
 
-| 테이블 | PK | 주요 컬럼 | 비고 |
-|--------|----|-----------|----|
-| `sales_pipeline` | (…, pipeline_id) | pipeline_type(0~4), client_name, stage(0~6), employee_Id, created/adjusted/closed_date, contract_id | FK→entity, employee |
-| `sales_pipeline_detail` | (…, pipeline_id, activity_id) | type(0~3), content, incharge, attached | 액티비티 |
-| `sales_contract` | (…, contract_id, contract_type) | client_id, pipeline_id, start/end_date, status(0~2), contract_amount, **ledger_date/ledger_no(NULL 허용)**, closed_date | CHECK: start≤end; ledger_date/no 둘 다 NULL or 둘 다 값 |
+| 테이블                  | PK                              | 주요 컬럼                                                                                                               | 비고                                                    |
+| ----------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `sales_pipeline`        | (…, pipeline_id)                | pipeline_type(0~4), client_name, stage(0~6), employee_Id, created/adjusted/closed_date, contract_id                     | FK→entity, employee                                     |
+| `sales_pipeline_detail` | (…, pipeline_id, activity_id)   | type(0~3), content, incharge, attached                                                                                  | 액티비티                                                |
+| `sales_contract`        | (…, contract_id, contract_type) | client_id, pipeline_id, start/end_date, status(0~2), contract_amount, **ledger_date/ledger_no(NULL 허용)**, closed_date | CHECK: start≤end; ledger_date/no 둘 다 NULL or 둘 다 값 |
 
 > **설계 결정** — `sales_contract` 의 `ledger_date/ledger_no` "PK" 원본 표기는 **선택적 전표 연결**로 해석하여 NULL 허용, PK 미포함, CHECK 제약으로 동시성 보장(FR-Contract-08). nullable 업무 FK를 PK에 포함하지 않는다는 지침 §10과 일치.
 
 ### 8.5 FINANCE 테이블
 
-| 테이블 | PK | 주요 컬럼 | 비고 |
-|--------|----|-----------|----|
-| `finance_GL` | (…, gl_id) | gl_name, gl_type(0~10), gl_category1/2, vat_gl, gl_detail(0/1), contra_gl, status + **Layer3 플래그 12종(BIT)** | 플래그: bank_id, Team_id, pod_id, employee_Id, client_id, vendor_id, dimension1~5, due_date |
-| `finance_GL_seed` | (gl_id) | 상동(스코프 없음) | 표준 GL 원본, 설치 시 적재·보존(FR-GL-11) |
-| `finance_dimension` | (…, dimension_id) | dimension_name, **slot_no(1~5)**, status | UNIQUE(…, slot_no); CHECK 1~5 |
-| `finance_dimension_detail` | (…, dimension_id, line_no) | dimension_value | 동일 항목 내 값 중복 금지 |
-| `finance_bank_account` | (…, bank_id) | bank_name, bank_account, card_number, status(0:사용) | CHECK: 계좌 XOR 카드 |
-| `finance_open_balance` | **PK 없음 (힙)** | company_year_id, gl_id, DRCR(1/2), **bank_id**, client_id, vendor_id, amount, closed(0/1) | UNIQUE 인덱스 `UX_open_balance(…, gl_id, DRCR, bank_key, client_key, vendor_key)` 만 존재. NULL은 PERSISTED 계산컬럼 `bank_key`/`client_key`/`vendor_key = ISNULL(col,'-')` 로 대체 → **부록 C에서 PK 추가** |
-| `finance_ledger_head` | (…, ledger_date, ledger_no) | ledger_name, ledger_type(0~3), employee_Id, approver_Id, insert/update/approved_date, approval_status | UNIQUE=PK. `employee_Id`/`approver_Id` 에 **FK 없음**(프로시저 검증). 일자 3종은 `date` — `approved_date` 만 D8로 상향 |
-| `finance_ledger_detail` | (…, ledger_date, ledger_no, **line_on**) | gl_id, DRCR, amount, Layer3 실제값(bank/Team/pod/employee/client/vendor/dimension1~5/due_date) | FK→head, GL, bank **만**. Team/pod/employee/client/vendor/dimension1~5 는 **FK 없음**. `amount` 는 **NULL 허용** — `> 0` 검증은 프로시저/Domain 전담 |
-| `finance_closing` | (…, company_year_id) | closing(0/1), closing_date | v3.0 신설. 행 없으면 미마감 간주 |
+| 테이블                     | PK                                       | 주요 컬럼                                                                                                       | 비고                                                                                                                                                                                                         |
+| -------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `finance_GL`               | (…, gl_id)                               | gl_name, gl_type(0~10), gl_category1/2, vat_gl, gl_detail(0/1), contra_gl, status + **Layer3 플래그 12종(BIT)** | 플래그: bank_id, Team_id, pod_id, employee_Id, client_id, vendor_id, dimension1~5, due_date                                                                                                                  |
+| `finance_GL_seed`          | (gl_id)                                  | 상동(스코프 없음)                                                                                               | 표준 GL 원본, 설치 시 적재·보존(FR-GL-11)                                                                                                                                                                    |
+| `finance_dimension`        | (…, dimension_id)                        | dimension_name, **slot_no(1~5)**, status                                                                        | UNIQUE(…, slot_no); CHECK 1~5                                                                                                                                                                                |
+| `finance_dimension_detail` | (…, dimension_id, line_no)               | dimension_value                                                                                                 | 동일 항목 내 값 중복 금지                                                                                                                                                                                    |
+| `finance_bank_account`     | (…, bank_id)                             | bank_name, bank_account, card_number, status(0:사용)                                                            | CHECK: 계좌 XOR 카드                                                                                                                                                                                         |
+| `finance_open_balance`     | **PK 없음 (힙)**                         | company_year_id, gl_id, DRCR(1/2), **bank_id**, client_id, vendor_id, amount, closed(0/1)                       | UNIQUE 인덱스 `UX_open_balance(…, gl_id, DRCR, bank_key, client_key, vendor_key)` 만 존재. NULL은 PERSISTED 계산컬럼 `bank_key`/`client_key`/`vendor_key = ISNULL(col,'-')` 로 대체 → **부록 C에서 PK 추가** |
+| `finance_ledger_head`      | (…, ledger_date, ledger_no)              | ledger_name, ledger_type(0~3), employee_Id, approver_Id, insert/update/approved_date, approval_status           | UNIQUE=PK. `employee_Id`/`approver_Id` 에 **FK 없음**(프로시저 검증). 일자 3종은 `date` — `approved_date` 만 D8로 상향                                                                                       |
+| `finance_ledger_detail`    | (…, ledger_date, ledger_no, **line_on**) | gl_id, DRCR, amount, Layer3 실제값(bank/Team/pod/employee/client/vendor/dimension1~5/due_date)                  | FK→head, GL, bank **만**. Team/pod/employee/client/vendor/dimension1~5 는 **FK 없음**. `amount` 는 **NULL 허용** — `> 0` 검증은 프로시저/Domain 전담                                                         |
+| `finance_closing`          | (…, company_year_id)                     | closing(0/1), closing_date                                                                                      | v3.0 신설. 행 없으면 미마감 간주                                                                                                                                                                             |
 
 > **컬럼명 `line_on` vs `line_no`** — `finance_ledger_detail` 의 라인번호 컬럼은 **`line_on`**(명세서 원본의 오기로 추정되나 DDL·프로시저·PK가 모두 이 이름을 쓴다), `finance_dimension_detail` 은 **`line_no`** 다. 두 이름이 공존하므로 산문·코드·Prisma 매핑에서 혼용하지 않는다. Prisma는 각각 `lineOn` / `lineNo` 로 매핑한다.
 
@@ -591,23 +625,29 @@ company ─1:N─ entity ─1:N─┬─ pod ─1:N─ team ─1:N─ employee
 각 규칙은 Domain/Application이 1차 소유하고, 저장 프로시저가 실행하며, 트리거가 이중 방어한다.
 
 ### 9.1 전표 저장 검증 (하나의 트랜잭션, 지침 §17·§24)
+
 전표 저장 시 다음을 **단일 업무 트랜잭션**으로 검증한다:
 Head 필수값 · Line 필수값 · 계정 사용 여부(status=1) · 관리항목 활성 여부(GL 플래그) · 차변/대변 · 금액(>0) · 지급/입금일(due_date 플래그) · 은행/카드(status=0) · **차변 합계 = 대변 합계**(승인 시) · 승인/마감 상태에 따른 수정 제한.
+
 - 프로시저: `usp_finance_ledger_head_save`(Head, ledger_no 자동), `usp_finance_ledger_detail_save`(라인 JSON 일괄 재적재), `usp_finance_ledger_approve`(차대 균형 후 승인).
 
 > **⚠ `line_on` 은 매 저장마다 1부터 재부여된다 — `@lines_json` 배열 순서가 의미를 갖는다.**
 > `usp_finance_ledger_detail_save` 는 `OPENJSON` 으로 라인을 읽어 `IDENTITY(1,1)` 테이블 변수에 담고, 그 순번(`rn`)을 그대로 `line_on` 으로 사용한다. 즉 **기존 라인 전체 DELETE → JSON 순서대로 재INSERT** 다. 결과:
+>
 > - 클라이언트가 보낸 배열 순서가 곧 화면상 라인 순서이자 저장된 `line_on` 이다. **부분 저장(단일 라인 PATCH)은 불가능**하며 항상 전체 라인 집합을 보내야 한다.
 > - `line_on` 을 외부에서 참조·기억하면 안 된다(저장마다 바뀔 수 있음). Layer3 편집 화면의 "선택 라인"은 `line_on` 이 아니라 클라이언트측 임시 키로 추적한다.
 > - Aggregate `Ledger` 가 라인 순서를 소유하고, Repository 는 `Ledger.lines` 순서대로 직렬화한다.
 
 ### 9.2 전표번호 생성 (지침 §12)
+
 `IDENTITY` 를 쓰지 않고 **회사/일자별 순번**으로 관리한다.
+
 ```typescript
 export interface LedgerNumberGenerator {
   next(scope: CompanyScope, ledgerDate: Date): Promise<number>;
 }
 ```
+
 - 구현은 프로시저 내부에서 아래와 같이 동시 저장 충돌을 방지한다. **UI/Controller에서 생성 금지.**
 
 ```sql
@@ -620,15 +660,18 @@ WHERE company_id=@company_id AND entity_id=@entity_id AND ledger_date=@ledger_da
 - `@mode='I'` 일 때만 생성되고 `OUTPUT` 파라미터로 반환된다(결과셋 없음). `@mode='U'` 에서는 입력값이다. → OUTPUT 바인딩 필요, [§10.2](#102-프로시저-실행-계층-d1) 참조.
 
 ### 9.3 승인 정책 (지침 §18)
+
 `LedgerApprovalPolicy` / `LedgerModificationPolicy` / `LedgerDeletePolicy` 또는 Entity 메서드로 처리.
+
 - 승인 완료(approval_status=1) 전표는 일반 수정/삭제 불가.
 - 트리거 `trg_finance_ledger_head_protect`(INSTEAD OF U/D), `trg_finance_ledger_detail_protect`(AFTER I/U/D)가 우회 DML 차단. 정상 승인 경로는 `SESSION_CONTEXT('ax_ledger_approve')` 로 통과.
 
 ### 9.4 초기이월 "확정"(closed) vs 연도 "회계마감"(closing) — v3.0 핵심 구분
-| 개념 | 컬럼 | 의미 | 프로시저 |
-|------|------|------|----------|
-| **확정** | `finance_open_balance.closed` | 초기이월 입력 자체의 잠금(차대 균형 검증 후) | `usp_finance_openbalance_close`(APPROVER) / `_reopen`(ADMIN) |
-| **회계마감** | `finance_closing.closing` | 연도 단위 회계 마감. 마감 시 차년도 이월 자동 생성 | `usp_finance_closing_execute`(ADMIN) |
+
+| 개념         | 컬럼                          | 의미                                               | 프로시저                                                     |
+| ------------ | ----------------------------- | -------------------------------------------------- | ------------------------------------------------------------ |
+| **확정**     | `finance_open_balance.closed` | 초기이월 입력 자체의 잠금(차대 균형 검증 후)       | `usp_finance_openbalance_close`(APPROVER) / `_reopen`(ADMIN) |
+| **회계마감** | `finance_closing.closing`     | 연도 단위 회계 마감. 마감 시 차년도 이월 자동 생성 | `usp_finance_closing_execute`(ADMIN)                         |
 
 - 연도마감으로 자동 생성된 차년도 초기이월은 `closed=Y` 로 저장하여 보호(FR-Close-08).
 - 확정해제 불가 조건: ① 해당 연도 회계마감(closing=Y) ② 연도마감 자동생성분(전년도가 회계마감된 연도의 초기이월).
@@ -643,7 +686,9 @@ WHERE company_id=@company_id AND entity_id=@entity_id AND ledger_date=@ledger_da
 4. 확정(`close`) 시 차대 균형을 `UPDLOCK, HOLDLOCK` 하에 검증하고 불일치면 차액을 담은 메시지로 거부(THROW 50441). **미확정 저장은 불일치를 허용**한다(FR-OpenBal-06, UC-OpenBal-04).
 
 ### 9.5 연도 회계마감 이월 계산 (FR-Close-05~10)
+
 `usp_finance_closing_execute` 는 1개 연도 단위로 처리(복수 선택 시 API가 `actual_year` 오름차순 순차 호출). 단일 트랜잭션, 실패 시 전체 ROLLBACK.
+
 - **선행검증 6종**: 대상 기수 존재 · 재마감 불가 · 선행연도 마감 완료 · 차년도 기수 존재 · 대상연도 미승인 전표 0건 · 차년도 초기이월 미존재.
 - **이월 대상**: `gl_type` 0(자산)·1(부채)·2(자본)만. 3~10(수익/원가/비용/법인세)은 제외.
 - **집계 단위**: `gl_id + bank_id + client_id + vendor_id`.
@@ -654,6 +699,7 @@ WHERE company_id=@company_id AND entity_id=@entity_id AND ledger_date=@ledger_da
 > **D7 · 이월 금액의 음수 허용** — `usp_finance_closing_execute` 는 산출 잔액이 `<> 0` 인 조합만 INSERT 하며 **부호를 그대로 저장**한다. 즉 자산 계정이 대변 초과이면 `DRCR=1` 행에 **음수 금액**이 들어간다(`finance_open_balance.amount` 에 `>= 0` CHECK 가 없어 허용됨). 수기 입력 경로는 음수를 거부(THROW 50433)하므로 **자동생성분만의 예외**다.
 >
 > 이 동작을 유지하되(부록 C에서 `amount >= 0` CHECK 를 **추가하지 않는다**), 다음을 보정한다:
+>
 > - **차/대변 합계 집계는 부호를 살려 계산한다** — `SUM(CASE WHEN DRCR='1' THEN amount ELSE -amount END)` 형태로 순액을 구해 차액을 판정한다. `DRCR` 별로 단순 `SUM(amount)` 만 하면 음수 행이 합계를 왜곡한다.
 > - **화면은 음수 행을 명시적으로 표시**한다(색상·괄호 표기). 숨기거나 절대값으로 바꾸지 않는다.
 > - Domain `Money` VO 는 초기이월 컨텍스트에서 음수를 허용하고, 전표 라인 컨텍스트에서는 `> 0` 을 강제한다(서로 다른 불변식).
@@ -663,7 +709,7 @@ WHERE company_id=@company_id AND entity_id=@entity_id AND ledger_date=@ledger_da
 원본 산출물에는 **회계마감을 되돌리는 프로시저·API가 없다**(재마감 불가, 마감연도는 조회만). D4에 따라 신설한다.
 
 **선결 조건 — 출처 구분 컬럼 신설**
-`finance_open_balance` 에는 행의 출처를 구분하는 컬럼이 없다. FR-Close-09 도 *"출처 구분 컬럼이 없어 자동 덮어쓰기를 하지 않습니다"* 라고 명시한다. 어떤 행이 마감 자동생성분인지 식별할 수 없으면 해제 시 무엇을 회수해야 하는지 알 수 없다. 따라서:
+`finance_open_balance` 에는 행의 출처를 구분하는 컬럼이 없다. FR-Close-09 도 _"출처 구분 컬럼이 없어 자동 덮어쓰기를 하지 않습니다"_ 라고 명시한다. 어떤 행이 마감 자동생성분인지 식별할 수 없으면 해제 시 무엇을 회수해야 하는지 알 수 없다. 따라서:
 
 - **`finance_open_balance.source varchar(10) NOT NULL DEFAULT 'MANUAL'`** 추가 (값: `MANUAL` | `CLOSING`) — [부록 C](#부록-c-09_ax_bridge_fixsql-스펙)
 - `usp_finance_closing_execute` 가 자동생성 행에 `'CLOSING'` 을 기록하도록 개작
@@ -673,13 +719,13 @@ WHERE company_id=@company_id AND entity_id=@entity_id AND ledger_date=@ledger_da
 
 선행검증 (신규 오류코드 **50531~50535** — 505xx 대역 연장):
 
-| 코드 | 검증 |
-|------|------|
-| 50531 | 대상 기수가 존재하지 않음 |
-| 50532 | 대상 연도가 마감(`closing=1`) 상태가 아님 — 해제할 것이 없음 |
+| 코드  | 검증                                                                                                            |
+| ----- | --------------------------------------------------------------------------------------------------------------- |
+| 50531 | 대상 기수가 존재하지 않음                                                                                       |
+| 50532 | 대상 연도가 마감(`closing=1`) 상태가 아님 — 해제할 것이 없음                                                    |
 | 50533 | **후행 연도가 이미 마감되어 있음** — 마감이 `actual_year` 오름차순 순차이므로 **해제는 내림차순 순차**여야 한다 |
-| 50534 | 차년도 초기이월에 `source='MANUAL'` 행이 존재 — 수기 입력분 유실 방지 |
-| 50535 | 차년도에 전표가 존재 — 이월 잔액이 이미 사용됨 |
+| 50534 | 차년도 초기이월에 `source='MANUAL'` 행이 존재 — 수기 입력분 유실 방지                                           |
+| 50535 | 차년도에 전표가 존재 — 이월 잔액이 이미 사용됨                                                                  |
 
 **실행 순서**
 
@@ -698,11 +744,12 @@ WHERE company_id=@company_id AND entity_id=@entity_id AND ledger_date=@ledger_da
 - ①을 먼저 두는 것은 **트리거가 강제하는 제약이 아니라 의도된 순서**다. 향후 대상연도 자신의 이월까지 손대는 확장이 생기면(그 연도는 아직 `closing=1` 이므로 51054가 발동한다) 비로소 순서가 강제된다.
 - 이 프로시저는 `SESSION_CONTEXT` 를 쓰므로 **반드시 단일 커넥션에서 실행**해야 한다([§10.2](#102-프로시저-실행-계층-d1)).
 
-- 엔드포인트: `POST /finance/closings/{yearId}/reopen` (ADMIN) → **API 총 93건**
+- 엔드포인트: `POST /finance/closings/{yearId}/reopen` (ADMIN) → **API 93건째**
 - `closing=0` 이 되면 `trg_finance_ledger_head_closing_lock`·`_head_protect`·`_detail_protect` 의 마감연도 조건이 자동으로 풀린다. **별도 트리거 추가는 불필요하다.**
 
 > **⚠ 한계 — 해제해도 승인 전표는 여전히 편집할 수 없다 (승인취소 기능 부재)**
 > 마감 해제는 *마감연도 잠금*만 푼다. 그 연도의 전표는 대부분 `approval_status=1`(승인) 상태인데, **원본 산출물에는 승인취소 프로시저가 없다** — 전체 75건 중 승인 관련은 `usp_finance_ledger_approve` 하나뿐이다. 따라서 해제 후에도:
+>
 > - `usp_finance_ledger_head_save(@mode='U')` → **THROW 50452** (미승인 전표만 수정 가능)
 > - 직접 UPDATE → **THROW 51012** (트리거)
 >
@@ -711,6 +758,7 @@ WHERE company_id=@company_id AND entity_id=@entity_id AND ledger_date=@ledger_da
 > 승인 전표 정정까지 필요하면 `usp_finance_ledger_unapprove`(APPROVER/ADMIN, `ax_ledger_approve` 플래그로 `approval_status=0`·`approver_Id`/`approved_date` NULL 복원, 마감연도 차단)를 추가로 설계해야 한다. **본 설계 범위에는 포함하지 않는다.**
 
 ### 9.7 표준 계정과목(GL) 재생성 (FR-GL-11~14)
+
 - 대상 = **로그인 세션 회사 고정**(사용자 임의 변경 불가).
 - 전표가 1건이라도 있으면 실행 불가(승인여부·타입 무관). 화면 비활성 + 서버 재검증. 존재 확인은 `UPDLOCK, HOLDLOCK` 하에 수행되어 검증-실행 사이의 전표 등록을 막는다.
 - 절차(단일 트랜잭션): 전표 존재 최종확인 → 기존 GL 전체 삭제(`ax_bypass_gl_protect` 플래그로 참조보호 트리거 통과) → `finance_GL_seed` 일괄 INSERT(company/entity만 세션값 치환). 실패 시 전체 ROLLBACK.
@@ -718,25 +766,30 @@ WHERE company_id=@company_id AND entity_id=@entity_id AND ledger_date=@ledger_da
 - **⚠ 반환값 결함** — 이 프로시저의 `inserted_count` 는 `@@ROWCOUNT` 를 `COMMIT` 이후에 읽어 **항상 무의미한 값**이다. 부록 C에서 수정한다. 그때까지 Application 은 이 값을 신뢰하지 말고 성공 여부만 판단한다.
 
 ### 9.8 관리항목 Slot 보존 (지침 §19)
+
 Slot 1~5는 과거 전표 데이터 의미를 보존해야 하므로 재정렬·재매핑·의미 변경·표시순서 불일치 금지. 회사당 최대 5개. Domain/Application이 Slot 번호를 명시적으로 관리.
+
 - Slot 부여는 **미사용 최소 번호**이며 `slot_no` 는 수정 불가. 중간 Slot이 비어도 후속 Slot을 당기지 않는다.
 - **관리항목 상세값에 DELETE 경로가 없다** — 프로시저·엔드포인트 모두 등록/수정만 존재한다(`usp_finance_dimension_detail_save`). 개별 값 회수는 관리항목 전체 삭제(`usp_finance_dimension_delete`)로만 가능하고, 그조차 GL 플래그나 전표 참조가 있으면 차단된다. 따라서 **오타 상세값은 수정으로 정정**하는 것이 유일한 경로다. 화면은 이를 전제로 안내한다.
 
 ### 9.9 참조 무결성과 Soft Disable/Delete (지침 §20)
+
 참조 데이터가 있는 Master는 물리 삭제 대신 **비활성화 우선**. 삭제 전 Repository로 참조 검증 → 참조 중이면 DELETE 차단 + 비활성 전환 안내. 비활성 데이터는 신규 선택 Popup(`active_only=1`)에서 제외하되 기존 조회/참조는 유지.
+
 - 적용 대상: 그룹/회사/조직, 고객사/거래처/지급정책, 계정과목, 관리항목, 은행/카드.
 
 > **⚠ `status` 극성이 도메인별로 반대다** — 코드에서 `status` 를 직접 비교하면 안 되는 이유다.
 >
-> | 활성 값 | 테이블 |
-> |---------|--------|
-> | **`status = 0`** | `system_company`, `system_entity`, `system_pod`, `system_team`, `finance_bank_account` |
-> | **`status = 1`** | `partner_term`, `partner_client`, `partner_vendor`, `finance_GL`, `finance_dimension` |
-> | 문자열 | `system_employee.status` — `varchar(20)`, `'active'`/`'inactive'` 등 6종 (`CK_emp_status`) |
+> | 활성 값          | 테이블                                                                                     |
+> | ---------------- | ------------------------------------------------------------------------------------------ |
+> | **`status = 0`** | `system_company`, `system_entity`, `system_pod`, `system_team`, `finance_bank_account`     |
+> | **`status = 1`** | `partner_term`, `partner_client`, `partner_vendor`, `finance_GL`, `finance_dimension`      |
+> | 문자열           | `system_employee.status` — `varchar(20)`, `'active'`/`'inactive'` 등 6종 (`CK_emp_status`) |
 >
 > 프로시저는 `@active_only bit` 파라미터로 이 차이를 감추지만, **Query Service가 직접 SELECT 를 작성할 때(D2) 극성을 테이블별로 확인해야 한다.** Domain 은 `ActiveStatus` Enum 으로만 다루고 극성 변환은 Mapper 가 테이블별로 책임진다.
 
 ### 9.10 은행/카드 (FR-Bank)
+
 - 계좌(bank_account) XOR 카드(card_number) — 동시 입력 금지, 둘 중 하나 필수.
   - **⚠ DDL의 `CK_bank_shape` 는 "둘 다 NOT NULL 금지" 뿐이므로 둘 다 NULL 인 행이 합법이다.** "둘 중 하나 필수"는 현재 프로시저 검증에만 존재 → 부록 C에서 CHECK 를 보강한다.
 - 회사 내 계좌/카드번호 중복 금지. 식별키(bank_id) 수정 불가.
@@ -745,6 +798,7 @@ Slot 1~5는 과거 전표 데이터 의미를 보존해야 하므로 재정렬·
 - status 0=사용/1=미사용. 전표 참조 시 삭제 불가.
 
 ### 9.11 지급정책 계산과 전표 지급/입금일 (FR-Term-06, FR-Ledger-11)
+
 - EOM+N: 기준월 말일 + offset_days → `DATEADD(DAY, @offset, EOMONTH(@base_date))`.
 - CurM DD: 기준월 DD일, DD가 월말 초과 시 월말로 보정.
 - 표시용 정책식 `term_condition` 은 트리거가 `EOM+{offset_days}` / `CurM{fixed_day}` 로 자동 구성한다. 프로시저는 `'-'` 를 넣고 트리거가 덮어쓴다.
@@ -761,13 +815,13 @@ Slot 1~5는 과거 전표 데이터 의미를 보존해야 하므로 재정렬·
 
 `IDENTITY` 를 쓰지 않고 프로시저가 채번한다. 잠금 정책이 항목별로 다르다.
 
-| 대상 | 방식 | 잠금 | 비고 |
-|------|------|------|------|
-| `finance_ledger_head.ledger_no` | `MAX+1`, 범위 = 회사+일자 | `UPDLOCK, HOLDLOCK` | [§9.2](#92-전표번호-생성-지침-12) |
-| `finance_dimension_detail.line_no` | `MAX+1`, 범위 = dimension_id | `UPDLOCK, HOLDLOCK` | `@line_no` NULL⇒생성 / 非NULL⇒수정 (InOut) |
-| `finance_dimension.slot_no` | 미사용 최소 Slot(1~5) | `UPDLOCK, HOLDLOCK` | [§9.8](#98-관리항목-slot-보존-지침-19) |
-| `finance_ledger_detail.line_on` | JSON 배열 순서 재부여 | 없음(전량 재적재) | [§9.1](#91-전표-저장-검증-하나의-트랜잭션-지침-1724) |
-| `sales_pipeline_detail.activity_id` | `'ACT' + yyMMddHHmmssff` | **없음** | **⚠ 아래** |
+| 대상                                | 방식                         | 잠금                | 비고                                                 |
+| ----------------------------------- | ---------------------------- | ------------------- | ---------------------------------------------------- |
+| `finance_ledger_head.ledger_no`     | `MAX+1`, 범위 = 회사+일자    | `UPDLOCK, HOLDLOCK` | [§9.2](#92-전표번호-생성-지침-12)                    |
+| `finance_dimension_detail.line_no`  | `MAX+1`, 범위 = dimension_id | `UPDLOCK, HOLDLOCK` | `@line_no` NULL⇒생성 / 非NULL⇒수정 (InOut)           |
+| `finance_dimension.slot_no`         | 미사용 최소 Slot(1~5)        | `UPDLOCK, HOLDLOCK` | [§9.8](#98-관리항목-slot-보존-지침-19)               |
+| `finance_ledger_detail.line_on`     | JSON 배열 순서 재부여        | 없음(전량 재적재)   | [§9.1](#91-전표-저장-검증-하나의-트랜잭션-지침-1724) |
+| `sales_pipeline_detail.activity_id` | `'ACT' + yyMMddHHmmssff`     | **없음**            | **⚠ 아래**                                           |
 
 > **⚠ `activity_id` 채번은 동시성에 취약하다** — `'ACT'+FORMAT(SYSDATETIME(),'yyMMddHHmmssff')` 는 **1/100초 해상도이고 잠금이 없다.** 동일 100분의 1초에 두 요청이 들어오면 같은 ID가 생성되고 후속 `EXISTS` 검사에서 THROW 50323 으로 실패한다(데이터 오염은 없으나 사용자에게 무의미한 오류가 노출된다).
 > → 부록 C에서 재시도 루프로 보강하고, Application 계층에서도 50323 을 **재시도 가능 오류**로 분류해 자동 재시도한다(최대 3회).
@@ -777,6 +831,7 @@ Slot 1~5는 과거 전표 데이터 의미를 보존해야 하므로 재정렬·
 ## 10. DB 오브젝트 ↔ 애플리케이션 계층 매핑 전략
 
 ### 10.1 Repository 규칙 (지침 §13, §25)
+
 - Domain은 DB 구현체를 모른다. `LedgerRepository` 인터페이스만 안다.
 - Infrastructure `PrismaLedgerRepository` / `MssqlLedgerRepository` 가 구현 — 쓰기는 제공된 `usp_*` 프로시저 호출, 조회는 Prisma 또는 최적화 SELECT.
 - Prisma Model을 Domain Entity로 직접 사용하지 않고 Mapper를 둔다.
@@ -799,19 +854,19 @@ model FinanceLedgerHead {
 
 **(a) OUTPUT 파라미터 — 4종 5개소.** 이 중 3개는 **NULL⇒생성 / 非NULL⇒수정** 의 양방향 InOut 이라 단순 결과셋으로 대체할 수 없다.
 
-| 프로시저 | 파라미터 | 성격 |
-|----------|----------|------|
-| `usp_finance_ledger_head_save` | `@ledger_no numeric(10,2)` | `@mode='I'` 시 생성, `'U'` 시 입력 |
-| `usp_finance_dimension_detail_save` | `@line_no numeric(10,2)` | NULL⇒생성 / 非NULL⇒수정 |
-| `usp_sales_activity_save` | `@activity_id varchar(20)` | NULL⇒생성 / 非NULL⇒수정 |
-| `usp_partner_term_calc_due` | `@due_date date` | OUTPUT **+ 1행 결과셋** 동시 반환 |
+| 프로시저                            | 파라미터                   | 성격                               |
+| ----------------------------------- | -------------------------- | ---------------------------------- |
+| `usp_finance_ledger_head_save`      | `@ledger_no numeric(10,2)` | `@mode='I'` 시 생성, `'U'` 시 입력 |
+| `usp_finance_dimension_detail_save` | `@line_no numeric(10,2)`   | NULL⇒생성 / 非NULL⇒수정            |
+| `usp_sales_activity_save`           | `@activity_id varchar(20)` | NULL⇒생성 / 非NULL⇒수정            |
+| `usp_partner_term_calc_due`         | `@due_date date`           | OUTPUT **+ 1행 결과셋** 동시 반환  |
 
 **(b) 다중 결과셋 — 2건.**
 
-| 프로시저 | 결과셋 1 | 결과셋 2 |
-|----------|----------|----------|
-| `usp_finance_ledger_get` | 전표 헤더 | 라인 + `gl_name`/`bank_name` + GL 플래그 12종(`f_bank`, `f_team`, … `f_due`) |
-| `usp_finance_openbalance_list` | 초기이월 행 | `debit_total` / `credit_total` / `difference` |
+| 프로시저                       | 결과셋 1    | 결과셋 2                                                                     |
+| ------------------------------ | ----------- | ---------------------------------------------------------------------------- |
+| `usp_finance_ledger_get`       | 전표 헤더   | 라인 + `gl_name`/`bank_name` + GL 플래그 12종(`f_bank`, `f_team`, … `f_due`) |
+| `usp_finance_openbalance_list` | 초기이월 행 | `debit_total` / `credit_total` / `difference`                                |
 
 **따라서 쓰기 경로는 `mssql`(tedious) 드라이버를 직접 사용한다.**
 
@@ -845,6 +900,7 @@ await this.proc.exec('usp_finance_ledger_detail_save', {
 ```
 
 **트랜잭션 경계** — mssql `Transaction` 이 소유한다(지침 §24, [§13](#13-트랜잭션-규칙-지침-24)).
+
 - 프로시저 1건 = 업무 트랜잭션 1건이 기본이다. 각 쓰기 프로시저가 이미 `SET XACT_ABORT ON` + `BEGIN TRAN` + `TRY/CATCH` + `ROLLBACK` + `THROW` 를 내장한다.
 - `usp_finance_check_year_open` 은 **호출자 트랜잭션 안에서 `EXEC`** 되며 자체 트랜잭션을 열지 않는다. 프로시저를 외부 트랜잭션으로 감쌀 때는 내부 CATCH의 `IF @@TRANCOUNT>0 ROLLBACK` 이 **외부 트랜잭션까지 되돌린다**는 점을 고려해야 한다 → **여러 프로시저를 하나의 외부 트랜잭션으로 묶지 않는다.**
 - **`SESSION_CONTEXT` 플래그는 커넥션 상태**이므로, 플래그를 쓰는 4개 프로시저(`ledger_approve`, `openbalance_close/reopen`, `gl_generate_standard`, 신설 `closing_reopen`)는 **반드시 단일 커넥션에서 실행**해야 한다. 풀에서 커넥션이 갈리면 트리거 우회가 실패한다.
@@ -858,17 +914,18 @@ await this.proc.exec('usp_finance_ledger_detail_save', {
 
 > **D2 · 페이징은 애플리케이션이 소유한다** — **82개 프로시저 전체에 `OFFSET`/`FETCH NEXT`/`ROW_NUMBER()`/`TOP` 이 0건**이고 총건수 OUTPUT도 없다. 모든 `_list` 는 필터된 **전체 집합**을 반환한다. 반면 [§11.1](#111-공통-정책-gateway) 공통정책은 `page/size`(기본 1/50, 최대 500)를 규정한다. 이 간극을 다음과 같이 메운다.
 >
-> | 용도 | 구현 | 페이징 |
-> |------|------|--------|
-> | Head Grid · 검색 목록 | **Query Service (Prisma / 최적화 SELECT)** | `page`/`size`/`sort` 를 SQL 수준에서 처리 |
-> | F2/Enter Lookup 팝업 · 소량 조회 | `usp_*_list` (`@search_mode`, `@active_only`) | 미적용 (결과 상한은 Query Service가 보호) |
-> | 다중 결과셋 조회 2건 | `usp_finance_ledger_get`, `usp_finance_openbalance_list` — 프로시저 유지 | 미적용 (단일 전표/단일 기수 범위) |
+> | 용도                             | 구현                                                                     | 페이징                                    |
+> | -------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------- |
+> | Head Grid · 검색 목록            | **Query Service (Prisma / 최적화 SELECT)**                               | `page`/`size`/`sort` 를 SQL 수준에서 처리 |
+> | F2/Enter Lookup 팝업 · 소량 조회 | `usp_*_list` (`@search_mode`, `@active_only`)                            | 미적용 (결과 상한은 Query Service가 보호) |
+> | 다중 결과셋 조회 2건             | `usp_finance_ledger_get`, `usp_finance_openbalance_list` — 프로시저 유지 | 미적용 (단일 전표/단일 기수 범위)         |
 >
 > - `_get` 프로시저가 **없는 7개 엔티티**(`pod`, `team`, `year`, `dimension`, `bank_account`, `contract`, `closing`)의 상세 조회는 Prisma가 담당한다.
 > - **`SELECT *` 를 쓰는 조회 프로시저 6건**(`entity_get`, `client_get`, `vendor_get`, `pipeline_get`, `gl_get` 의 `g.*`, `ledger_get` 헤더)은 DDL 변경에 취약하다. Query Service 전환 시 컬럼을 명시한다.
 > - Query Service 로 직접 SELECT 를 작성할 때 **반드시 함께 옮겨야 하는 규칙**: `company_id`+`entity_id` 스코프([§5](#5-멀티테넌시와-companyscope)), `status` 극성([§9.9](#99-참조-무결성과-soft-disabledelete-지침-20)), **카드번호 마스킹**([§9.10](#910-은행카드-fr-bank)), `user_pass` 제외([§6.1](#61-인증-흐름)).
 
 ### 10.4 Raw SQL 규칙 (지침 §15)
+
 복잡 Grid 조회·대량 집계·성능상 ORM 부적절·SQL Server 전용 기능에 한해 사용. `NVARCHAR`/`VARCHAR` 암시적 형변환과 코드성 VARCHAR 인덱스 검색 성능에 주의. 쓰기 경로에 프로시저를 채택한 근거는 [§2.3](#23-저장-프로시저--트리거와-ddd의-통합-핵심-설계-결정) 의 지침 §15 편차 항목 참조.
 
 > **⚠ `LIKE` 이스케이프 누락** — 모든 `_list` 프로시저가 `LIKE '%' + @keyword + '%'` 를 `ESCAPE` 절 없이 사용한다. 사용자가 입력한 `%`·`_`·`[` 가 **와일드카드로 동작**한다. Query Service 전환(D2) 시 입력값을 이스케이프하고 `ESCAPE '\'` 를 명시한다. 프로시저를 계속 쓰는 Lookup 경로에서도 Application 이 사전 이스케이프한다.
@@ -877,18 +934,18 @@ await this.proc.exec('usp_finance_ledger_detail_save', {
 
 총 **10건** — `06` 9건 + `08` 신규 1건. `08` 은 이 중 **3건(head_protect · detail_protect · open_balance_protect)을 교체**한다([§16 Phase 0](#16-구현-로드맵-지침-2730--vertical-slice) 실행순서 참조).
 
-| 트리거 | 대상 | 시점/이벤트 | 방어 내용 | 오류코드 |
-|--------|------|-------------|-----------|----------|
-| `trg_system_employee_protect_admin` | employee | INSTEAD OF DELETE | built-in admin(`user_id='admin'`) 물리삭제 차단. 그 외 행은 정상 삭제 수행 | 51001 |
-| `trg_system_employee_audit` | employee | AFTER UPDATE | 수동 편집 시 `last_manual_edit_at` 기록. `last_login` 단독 갱신은 제외, 재귀 방지 | — |
-| `trg_system_employee_inactive` | employee | AFTER UPDATE | `inactive` 전환 시 퇴사일 미입력이면 당일로 자동 보완 | — |
-| `trg_sales_pipeline_audit` | pipeline | AFTER UPDATE | `adjusted_date` 갱신, stage 5/6 진입 시 `closed_date` 설정, 재오픈 시 NULL 해제 | — |
-| `trg_finance_ledger_head_protect` | ledger_head | INSTEAD OF U/D | **[마감연도]** + 승인 전표 헤더 보호. 미승인 삭제 시 라인 연쇄삭제. 승인 경로는 `ax_ledger_approve` 로 통과 | 51011 · 51012 · **51052** |
-| `trg_finance_ledger_detail_protect` | ledger_detail | AFTER I/U/D | **[마감연도]** + 승인 전표 라인 변경 차단 | 51021 · **51053** |
-| `trg_finance_open_balance_protect` | open_balance | AFTER I/U/D | **[마감연도]** 전면 잠금 + 확정(`closed=1`)분 보호. 확정/해제 프로시저는 `ax_openbal_admin` 으로 통과 | 51031 · **51054** |
-| `trg_finance_gl_protect_delete` | GL | INSTEAD OF DELETE | 초기이월/전표 참조 계정 삭제 차단(재생성은 `ax_bypass_gl_protect` 로 통과) | 51041 |
-| `trg_finance_ledger_head_closing_lock` | ledger_head | AFTER INSERT | **[마감연도]** 전표 신규 등록 차단 | **51051** |
-| `trg_partner_term_condition` | term | AFTER I/U | 표시용 정책식 자동 구성(`EOM+{offset}` / `CurM{day}`), 재귀 방지 | — |
+| 트리거                                 | 대상          | 시점/이벤트       | 방어 내용                                                                                                   | 오류코드                  |
+| -------------------------------------- | ------------- | ----------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `trg_system_employee_protect_admin`    | employee      | INSTEAD OF DELETE | built-in admin(`user_id='admin'`) 물리삭제 차단. 그 외 행은 정상 삭제 수행                                  | 51001                     |
+| `trg_system_employee_audit`            | employee      | AFTER UPDATE      | 수동 편집 시 `last_manual_edit_at` 기록. `last_login` 단독 갱신은 제외, 재귀 방지                           | —                         |
+| `trg_system_employee_inactive`         | employee      | AFTER UPDATE      | `inactive` 전환 시 퇴사일 미입력이면 당일로 자동 보완                                                       | —                         |
+| `trg_sales_pipeline_audit`             | pipeline      | AFTER UPDATE      | `adjusted_date` 갱신, stage 5/6 진입 시 `closed_date` 설정, 재오픈 시 NULL 해제                             | —                         |
+| `trg_finance_ledger_head_protect`      | ledger_head   | INSTEAD OF U/D    | **[마감연도]** + 승인 전표 헤더 보호. 미승인 삭제 시 라인 연쇄삭제. 승인 경로는 `ax_ledger_approve` 로 통과 | 51011 · 51012 · **51052** |
+| `trg_finance_ledger_detail_protect`    | ledger_detail | AFTER I/U/D       | **[마감연도]** + 승인 전표 라인 변경 차단                                                                   | 51021 · **51053**         |
+| `trg_finance_open_balance_protect`     | open_balance  | AFTER I/U/D       | **[마감연도]** 전면 잠금 + 확정(`closed=1`)분 보호. 확정/해제 프로시저는 `ax_openbal_admin` 으로 통과       | 51031 · **51054**         |
+| `trg_finance_gl_protect_delete`        | GL            | INSTEAD OF DELETE | 초기이월/전표 참조 계정 삭제 차단(재생성은 `ax_bypass_gl_protect` 로 통과)                                  | 51041                     |
+| `trg_finance_ledger_head_closing_lock` | ledger_head   | AFTER INSERT      | **[마감연도]** 전표 신규 등록 차단                                                                          | **51051**                 |
+| `trg_partner_term_condition`           | term          | AFTER I/U         | 표시용 정책식 자동 구성(`EOM+{offset}` / `CurM{day}`), 재귀 방지                                            | —                         |
 
 **[마감연도] 표시 = v3.0에서 추가된 마감연도 잠금 로직. 4건이다** (설계상 중요: 3건이 아니다).
 
@@ -907,11 +964,11 @@ await this.proc.exec('usp_finance_ledger_detail_save', {
 
 **SESSION_CONTEXT 플래그 3종** — 프로시저가 쓰고(`sp_set_session_context`), 트리거가 읽는다. **프로시저는 읽지 않는다.**
 
-| 키 | 설정 프로시저 | 읽는 트리거 |
-|----|---------------|-------------|
-| `ax_ledger_approve` | `usp_finance_ledger_approve` | `trg_finance_ledger_head_protect` |
-| `ax_openbal_admin` | `usp_finance_openbalance_close` / `_reopen` (+ 신설 `usp_finance_closing_reopen`) | `trg_finance_open_balance_protect` |
-| `ax_bypass_gl_protect` | `usp_finance_gl_generate_standard` | `trg_finance_gl_protect_delete` |
+| 키                     | 설정 프로시저                                                                     | 읽는 트리거                        |
+| ---------------------- | --------------------------------------------------------------------------------- | ---------------------------------- |
+| `ax_ledger_approve`    | `usp_finance_ledger_approve`                                                      | `trg_finance_ledger_head_protect`  |
+| `ax_openbal_admin`     | `usp_finance_openbalance_close` / `_reopen` (+ 신설 `usp_finance_closing_reopen`) | `trg_finance_open_balance_protect` |
+| `ax_bypass_gl_protect` | `usp_finance_gl_generate_standard`                                                | `trg_finance_gl_protect_delete`    |
 
 패턴: `=1` 설정 → 권한 DML → `=NULL` 리셋. **`BEGIN CATCH` 안에서도 `=NULL` 리셋을 반복**한 뒤 `THROW` 한다(플래그 누출 방지). 커넥션 고정 요구사항은 [§10.2](#102-프로시저-실행-계층-d1) 참조.
 
@@ -920,6 +977,7 @@ await this.proc.exec('usp_finance_ledger_detail_save', {
 ## 11. API 설계
 
 ### 11.1 공통 정책 (Gateway)
+
 - **Base URL**: `https://api.axbridge.example.com/api/v1` → 도메인 서비스 라우팅(`/auth·/system`→system, `/partner`, `/sales`, `/finance`).
 - **인증**: 로그인 성공 시 JWT. 이후 `Authorization: Bearer {token}`.
 - **테넌트 격리**: company_id/entity_id 는 JWT claim에서 추출 → 헤더 주입. 클라이언트 입력값 미신뢰(FR-Bank-08).
@@ -929,41 +987,42 @@ await this.proc.exec('usp_finance_ledger_detail_save', {
 - **Rate Limit**: 사용자당 120 req/min.
 - **감사 로깅**: 모든 쓰기 요청의 user_id·IP·경로·결과코드 기록. 비밀번호/카드번호 마스킹. **`approved_date` 를 제외한 업무일자가 일 단위이므로(D8), 초 단위 행위 이력은 이 로그가 유일한 근거다** — 보존기간을 감사 요건에 맞춰 설정한다.
 
-### 11.2 엔드포인트 (도메인별 요약, 총 **93건** = 명세 92건 + D4 신설 1건)
+### 11.2 엔드포인트 (도메인별 요약, 총 **94건** = 명세 92건 + D4 신설 1건 + 계정변경 미리보기 1건)
 
 **AUTH (3)** — `POST /auth/login` (공개) · `POST /auth/refresh` (공개) · `PUT /auth/password` (로그인 사용자)
 
 **SYSTEM (28)**
 
-| 리소스 | 엔드포인트 | 건수 |
-|--------|-----------|------|
-| `/system/companies` | GET 목록 · **GET 상세** · POST · PUT · DELETE | 5 |
-| `/system/entities` | GET 목록 · **GET 상세** · POST · PUT · DELETE | 5 |
-| `/system/pods` | GET 목록 · POST · PUT · DELETE | **4** |
-| `/system/teams` | GET 목록 · POST · PUT · DELETE | **4** |
-| `/system/employees` | GET 목록 · **GET 상세** · POST · PUT · `PUT …/{id}/password`(ADMIN) · DELETE(ADMIN) | 6 |
-| `/system/years` | GET 목록 · POST · PUT · DELETE | **4** |
+| 리소스              | 엔드포인트                                                                          | 건수  |
+| ------------------- | ----------------------------------------------------------------------------------- | ----- |
+| `/system/companies` | GET 목록 · **GET 상세** · POST · PUT · DELETE                                       | 5     |
+| `/system/entities`  | GET 목록 · **GET 상세** · POST · PUT · DELETE                                       | 5     |
+| `/system/pods`      | GET 목록 · POST · PUT · DELETE                                                      | **4** |
+| `/system/teams`     | GET 목록 · POST · PUT · DELETE                                                      | **4** |
+| `/system/employees` | GET 목록 · **GET 상세** · POST · PUT · `PUT …/{id}/password`(ADMIN) · DELETE(ADMIN) | 6     |
+| `/system/years`     | GET 목록 · POST · PUT · DELETE                                                      | **4** |
 
 > **상세 GET 은 6개 리소스 중 3개에만 있다** — `pods`·`teams`·`years` 는 목록 조회만 제공한다(`usp_*_get` 프로시저 자체가 없다, [§10.3](#103-command--query-분리와-조회페이징-전략-d2)). 상세가 필요하면 Prisma 조회로 추가한다.
 
 **PARTNER (15)** — `/partner/terms`(5, + `GET …/{termId}/due-date` 지급일 미리보기) · `/partner/clients`(5, 상세 GET 포함) · `/partner/vendors`(5, 상세 GET 포함)
 
 **SALES (15)**
+
 - `/sales/pipelines` (6): GET 목록 · GET 상세 · POST · **PUT `/{pipelineId}`** · `PUT …/{pipelineId}/contract`(계약 연결/해제) · DELETE
 - `/sales/pipelines/{pipelineId}/activities` (4): GET · POST · `PUT …/{activityId}` · `DELETE …/{activityId}`
 - `/sales/contracts` (5): GET 목록 · POST · **`PUT /{contractId}/{contractType}`** · **`PUT /{contractId}/{contractType}/ledger`**(전표 연결/해제) · **`DELETE /{contractId}/{contractType}`**
   → 계약은 PK가 `(contract_id, contract_type)` 복합키이므로 **경로에 두 세그먼트가 모두 필요하다.**
 
-**FINANCE (31 + 1)**
+**FINANCE (31 + 2)**
 
-| 메뉴 | 엔드포인트 |
-|------|-----------|
-| 계정과목 (6) | `/finance/gl` GET 목록·GET `/{glId}`·POST·PUT·DELETE + `POST /finance/gl/generate-standard`(ADMIN) |
-| 관리항목 (7) | `GET /finance/dimensions` · `GET …/{dimensionId}/details` · POST · `PUT …/{dimensionId}` · `POST …/{dimensionId}/details` · `PUT …/{dimensionId}/details/{lineNo}` · `DELETE …/{dimensionId}` — **상세값 DELETE 없음**([§9.8](#98-관리항목-slot-보존-지침-19)) |
-| 초기이월 (4) | `GET /finance/open-balances` · `PUT /finance/open-balances` · **`POST /finance/open-balances/close`**(APPROVER) · **`POST /finance/open-balances/reopen`**(ADMIN) — 경로에 기수 파라미터 없음, body 로 `company_year_id` 전달 |
-| 전표 (7) | `GET /finance/ledgers` · `GET/PUT/DELETE …/{ledgerDate}/{ledgerNo}` · `POST /finance/ledgers` · `PUT …/{ledgerDate}/{ledgerNo}/lines` · `POST …/{ledgerDate}/{ledgerNo}/approve`(APPROVER) |
-| 마감관리 (3 **+1**) | `GET /finance/closings` · `POST …/{yearId}/execute`(ADMIN) · `GET …/{yearId}/status` · **`POST …/{yearId}/reopen`(ADMIN) — D4 신설** |
-| 은행/카드 (4) | `/finance/bank-accounts` GET 목록·POST·PUT·DELETE (상세 GET 없음) |
+| 메뉴                | 엔드포인트                                                                                                                                                                                                                                                     |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 계정과목 (6)        | `/finance/gl` GET 목록·GET `/{glId}`·POST·PUT·DELETE + `POST /finance/gl/generate-standard`(ADMIN)                                                                                                                                                             |
+| 관리항목 (7)        | `GET /finance/dimensions` · `GET …/{dimensionId}/details` · POST · `PUT …/{dimensionId}` · `POST …/{dimensionId}/details` · `PUT …/{dimensionId}/details/{lineNo}` · `DELETE …/{dimensionId}` — **상세값 DELETE 없음**([§9.8](#98-관리항목-slot-보존-지침-19)) |
+| 초기이월 (4)        | `GET /finance/open-balances` · `PUT /finance/open-balances` · **`POST /finance/open-balances/close`**(APPROVER) · **`POST /finance/open-balances/reopen`**(ADMIN) — 경로에 기수 파라미터 없음, body 로 `company_year_id` 전달                                  |
+| 전표 (7 **+1**)     | `GET /finance/ledgers` · `GET/PUT/DELETE …/{ledgerDate}/{ledgerNo}` · `POST /finance/ledgers` · `PUT …/{ledgerDate}/{ledgerNo}/lines` · `POST …/{ledgerDate}/{ledgerNo}/approve`(APPROVER) · **`POST /finance/ledgers/preview-account-change`(EDITOR) — 신설** |
+| 마감관리 (3 **+1**) | `GET /finance/closings` · `POST …/{yearId}/execute`(ADMIN) · `GET …/{yearId}/status` · **`POST …/{yearId}/reopen`(ADMIN) — D4 신설**                                                                                                                           |
+| 은행/카드 (4)       | `/finance/bank-accounts` GET 목록·POST·PUT·DELETE (상세 GET 없음)                                                                                                                                                                                              |
 
 ### 11.3 업무 행위 Endpoint (지침 §23)
 
@@ -984,81 +1043,96 @@ PUT  /sales/contracts/{contractId}/{contractType}/ledger   EDITOR     # 전표 �
 > [§7.3](#73-sales)의 `pipeline.close()`·`cancel()`·`reopen()` 은 **Domain 메서드로 유지**한다(속성 직접 대입 금지 원칙). Application 이 이 메서드를 호출한 뒤 단일 `save` 로 영속화한다. 엔드포인트를 추가로 만들지 않는다.
 
 ### 11.4 대표 프로시저 매핑 (발췌)
-| API | 프로시저 | 권한 | FR |
-|-----|----------|------|----|
-| POST /finance/ledgers | usp_finance_ledger_head_save(I) | EDITOR | FR-Ledger-04/16 |
-| PUT /finance/ledgers/{ledgerDate}/{ledgerNo}/lines | usp_finance_ledger_detail_save | EDITOR | FR-Ledger-05~09/15/16 |
-| POST /finance/ledgers/{ledgerDate}/{ledgerNo}/approve | usp_finance_ledger_approve | APPROVER | FR-Ledger-10/13/16 |
-| POST /finance/closings/{yearId}/execute | usp_finance_closing_execute | ADMIN | FR-Close-02~10 |
-| **POST /finance/closings/{yearId}/reopen** | **usp_finance_closing_reopen** (D4 신설) | ADMIN | [§9.6](#96-연도-회계마감-해제-d4--신설) |
-| POST /finance/gl/generate-standard | usp_finance_gl_generate_standard | ADMIN | FR-GL-11~14 |
-| POST /finance/open-balances/close | usp_finance_openbalance_close | APPROVER | FR-OpenBal-07 |
-| POST /finance/open-balances/reopen | usp_finance_openbalance_reopen | ADMIN | FR-OpenBal-08 |
 
-(전체 74 프로시저 · 92 API 매핑은 `AX_Bridge_DB_API_명세서.xlsx` 를 정본으로 참조. 본 설계서가 추가하는 것은 **`usp_finance_closing_reopen` + `POST /finance/closings/{yearId}/reopen` 1건뿐**이며, 그 외에는 명세를 초과하지 않는다.)
+| API                                                   | 프로시저                                 | 권한     | FR                                      |
+| ----------------------------------------------------- | ---------------------------------------- | -------- | --------------------------------------- |
+| POST /finance/ledgers                                 | usp_finance_ledger_head_save(I)          | EDITOR   | FR-Ledger-04/16                         |
+| PUT /finance/ledgers/{ledgerDate}/{ledgerNo}/lines    | usp_finance_ledger_detail_save           | EDITOR   | FR-Ledger-05~09/15/16                   |
+| POST /finance/ledgers/{ledgerDate}/{ledgerNo}/approve | usp_finance_ledger_approve               | APPROVER | FR-Ledger-10/13/16                      |
+| POST /finance/closings/{yearId}/execute               | usp_finance_closing_execute              | ADMIN    | FR-Close-02~10                          |
+| **POST /finance/closings/{yearId}/reopen**            | **usp_finance_closing_reopen** (D4 신설) | ADMIN    | [§9.6](#96-연도-회계마감-해제-d4--신설) |
+| POST /finance/gl/generate-standard                    | usp_finance_gl_generate_standard         | ADMIN    | FR-GL-11~14                             |
+| POST /finance/open-balances/close                     | usp_finance_openbalance_close            | APPROVER | FR-OpenBal-07                           |
+| POST /finance/open-balances/reopen                    | usp_finance_openbalance_reopen           | ADMIN    | FR-OpenBal-08                           |
+
+(전체 75 프로시저 · 94 API 매핑은 `AX_Bridge_DB_API_명세서.xlsx` v3.0 을 정본으로 참조.)
+
+> **명세 92건을 넘는 2건** — 둘 다 프로시저를 새로 만들지 않는다.
+>
+> | 엔드포인트 | 근거 | 프로시저 |
+> |---|---|---|
+> | `POST /finance/closings/{yearId}/reopen` | D4 — 원본에 마감을 되돌리는 경로가 없었다 ([§9.6](#96-연도-회계마감-해제-d4--신설)) | `usp_finance_closing_reopen` (`09` 신설) |
+> | `POST /finance/ledgers/preview-account-change` | UC-Ledger-04 예외 — 계정을 바꾸면 플래그가 `Y→N` 이 되어 버려질 Layer3 값이 생긴다. **값을 자동으로 지우지 않고 목록만 돌려주므로** 화면이 사용자 확인을 받은 뒤 정리된 라인으로 저장한다 | 없음 — Domain(`LedgerLine.conflictsWith`)이 판정한다 |
 
 ---
 
 ## 12. 프론트엔드 설계
 
 ### 12.1 공통 UI 컴포넌트 (지침 §6 — 화면별 중복 구현 금지)
+
 `<AppToolbar />` · `<SearchBar />` · `<HeadDetailLayout />` · `<LookupPopup />` · `<DirtyFormGuard />` · `<ConfirmDialog />` · `<StatusBadge />`
 
 ### 12.2 공통 화면 흐름 (FR-UI-01~07)
+
 ```
 조회조건 입력 → 조회 → Head Grid → 행 선택 → Detail 표시
 → 신규/수정 → 검증 → 저장 트랜잭션 → Head 재조회 + 선택 유지
 ```
+
 - **툴바 기본 순서**: 조회 → 신규 → 수정 → 저장 → 삭제 → 취소 (FR-UI-02). 승인 등 메뉴 고유 기능은 기본 버튼 뒤에 구분 배치. 조회 상태에서는 조회/신규만 활성, 저장/취소는 편집모드에서 활성.
 - **조회조건바 순서**: 그룹 → 회사 → 메뉴별 주요조건 → 상태. 조회조건 초기화 제공(FR-UI-03). 상위조건 변경 시 하위조건·선택값 초기화.
 - 조회전용 사용자는 편집 버튼 비활성(FR-UI-02·FR-UI-07).
 - **툴바 예외 화면** — 마감관리(SCR-FIN-06)는 표준 6버튼이 아니라 **조회 · 마감 · 취소** 구성이다. `<AppToolbar />` 는 버튼 집합을 주입받는 구조여야 한다.
 
 ### 12.3 공통 Lookup Popup (F2/Enter, 지침 §21, FR-UI-04)
+
 ```
 F2     → 조건 범위 목록 팝업
 Enter  → Exact 검색 → 1건이면 즉시 선택 → 미일치/다건이면 Like 팝업
 ```
+
 - 상위 그룹/회사 조건이 필요한 Lookup은 상위조건이 없으면 팝업을 열지 않고 선행 선택을 안내한다.
 - 선택 후 코드+명칭을 함께 내부 보관.
 
 > **⚠ 프로시저의 `@search_mode` 지원이 균일하지 않다** — 공통 규약은 전 화면 동일 동작을 전제하지만 실제 프로시저는 다음과 같이 갈린다.
 >
-> | 지원 수준 | 프로시저 |
-> |-----------|----------|
-> | `@search_mode` 정상 지원 | `_list` 14건 |
-> | **미지원 — 무조건 `LIKE '%…%'`** | `usp_sales_contract_list`, `usp_finance_openbalance_list` |
-> | **키워드 검색 자체 없음** | `usp_system_year_list`, `usp_sales_activity_list`, `usp_finance_closing_list` |
+> | 지원 수준                        | 프로시저                                                                      |
+> | -------------------------------- | ----------------------------------------------------------------------------- |
+> | `@search_mode` 정상 지원         | `_list` 14건                                                                  |
+> | **미지원 — 무조건 `LIKE '%…%'`** | `usp_sales_contract_list`, `usp_finance_openbalance_list`                     |
+> | **키워드 검색 자체 없음**        | `usp_system_year_list`, `usp_sales_activity_list`, `usp_finance_closing_list` |
 >
 > D2에 따라 이 화면들의 목록 조회는 **Query Service 가 담당**하며, 거기서 Exact/Like 를 구현해 `<LookupPopup />` 규약을 균일하게 맞춘다. 프론트엔드는 화면별 예외 분기를 갖지 않는다.
 > 입력값의 `%`·`_` 이스케이프는 [§10.4](#104-raw-sql-규칙-지침-15) 참조.
 
 ### 12.4 미저장 변경 보호 (지침 §22, FR-UI-06)
+
 신규/수정 모드에서 다른 Head 행 선택·재조회·메뉴 이동·브라우저 이동·취소·회사/그룹 조건 변경 시 `<DirtyFormGuard />` 로 Dirty Check → 저장/무시/취소 선택.
 
 ### 12.5 도메인별 화면 구조
 
-| 화면 | 구조 | 특이사항 |
-|------|------|----------|
-| SYSTEM 각 마스터 | 조회조건바 + Head/Detail | 그룹→회사→(부서) 종속 선택 |
-| **직원등록** | 조회조건바 + Head/Detail, **Detail 은 2개 탭** | **기본정보(인사)** / **계정정보**(`user_yn`·`user_id`·비밀번호·마지막 로그인). 항목이 많아 탭 분리가 필수. 사번은 수정모드에서 읽기전용. 조직 이동 시 새 그룹·회사·부서 조합 유효성 검증. 비밀번호·해시는 **어느 탭에도 표시하지 않는다** |
-| 계정과목(GL) | **2-Frame**: 좌 Head(계정구분·gl_id·gl_name 3열) / 우 Detail(전체 + Layer3 플래그 **7종 + 관리항목 1~5 = 12종** + Slot1~5 실제 관리항목명) | 「계정과목 생성」 버튼(전표 존재 시 비활성). `contra_gl` 은 `gl_detail=차감항목` 일 때 F2/Enter 로 동일 회사 사용중 계정 선택, 자기 자신 제외([§7.4](#74-finance)) |
-| 관리항목 | Head(Slot·코드·명·상태) / Detail(상세값 목록) | 최대 5개, Slot 표시. 미등록 Slot 행은 `3~5 — (미등록)` 로 표시. **상세값 개별 삭제 UI를 두지 않는다**([§9.8](#98-관리항목-slot-보존-지침-19)) |
-| 초기이월 | 조회조건(기수 필수) + 입력 그리드 + 하단 차/대변 합계 | bank_id·고객사·거래처 보조잔액, 확정/확정해제. **금액 0 입력 = 행 삭제**임을 명시([§9.4](#94-초기이월-확정closed-vs-연도-회계마감closing--v30-핵심-구분)). 합계는 부호를 살려 계산하고 음수 행을 명시 표시(D7) |
-| **전표(Ledger)** | **3-Layer**: Layer1 헤더 목록 / Layer2 라인(라인번호·계정·차대·금액·고객사) **+ 상단에 DRCR별 합계·차액 실시간 표시** / Layer3 관리항목(계정 플래그 기반 활성/비활성) | 아래 상세 |
-| 마감관리 | 기수·연도별 마감현황 그리드 + **조회·마감·취소** 툴바 | 미마감만 체크 가능, `actual_year` 오름차순 순차 마감. 선행연도 미마감이면 후행 체크 제한. **마감 해제는 내림차순 순차**(D4, [§9.6](#96-연도-회계마감-해제-d4--신설)) |
+| 화면             | 구조                                                                                                                                                                  | 특이사항                                                                                                                                                                                                                                  |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SYSTEM 각 마스터 | 조회조건바 + Head/Detail                                                                                                                                              | 그룹→회사→(부서) 종속 선택                                                                                                                                                                                                                |
+| **직원등록**     | 조회조건바 + Head/Detail, **Detail 은 2개 탭**                                                                                                                        | **기본정보(인사)** / **계정정보**(`user_yn`·`user_id`·비밀번호·마지막 로그인). 항목이 많아 탭 분리가 필수. 사번은 수정모드에서 읽기전용. 조직 이동 시 새 그룹·회사·부서 조합 유효성 검증. 비밀번호·해시는 **어느 탭에도 표시하지 않는다** |
+| 계정과목(GL)     | **2-Frame**: 좌 Head(계정구분·gl_id·gl_name 3열) / 우 Detail(전체 + Layer3 플래그 **7종 + 관리항목 1~5 = 12종** + Slot1~5 실제 관리항목명)                            | 「계정과목 생성」 버튼(전표 존재 시 비활성). `contra_gl` 은 `gl_detail=차감항목` 일 때 F2/Enter 로 동일 회사 사용중 계정 선택, 자기 자신 제외([§7.4](#74-finance))                                                                        |
+| 관리항목         | Head(Slot·코드·명·상태) / Detail(상세값 목록)                                                                                                                         | 최대 5개, Slot 표시. 미등록 Slot 행은 `3~5 — (미등록)` 로 표시. **상세값 개별 삭제 UI를 두지 않는다**([§9.8](#98-관리항목-slot-보존-지침-19))                                                                                             |
+| 초기이월         | 조회조건(기수 필수) + 입력 그리드 + 하단 차/대변 합계                                                                                                                 | bank_id·고객사·거래처 보조잔액, 확정/확정해제. **금액 0 입력 = 행 삭제**임을 명시([§9.4](#94-초기이월-확정closed-vs-연도-회계마감closing--v30-핵심-구분)). 합계는 부호를 살려 계산하고 음수 행을 명시 표시(D7)                            |
+| **전표(Ledger)** | **3-Layer**: Layer1 헤더 목록 / Layer2 라인(라인번호·계정·차대·금액·고객사) **+ 상단에 DRCR별 합계·차액 실시간 표시** / Layer3 관리항목(계정 플래그 기반 활성/비활성) | 아래 상세                                                                                                                                                                                                                                 |
+| 마감관리         | 기수·연도별 마감현황 그리드 + **조회·마감·취소** 툴바                                                                                                                 | 미마감만 체크 가능, `actual_year` 오름차순 순차 마감. 선행연도 미마감이면 후행 체크 제한. **마감 해제는 내림차순 순차**(D4, [§9.6](#96-연도-회계마감-해제-d4--신설))                                                                      |
 
 **전표 화면 상세**
 
 - **Layer2 차대변 합계** — 라인 그리드 상단에 차변합계 · 대변합계 · **차액**을 실시간 표시한다. 승인은 차액 0 일 때만 가능하며, 불일치 시 세 값을 모두 담은 안내를 띄운다(FR-Ledger-10).
 - **계정 선택 시 플래그 즉시 로드** — `gl_id` 확정 즉시 해당 계정의 플래그 12종을 로드해 Layer3 입력영역을 활성/비활성한다. Slot 필드의 **레이블은 실제 관리항목명**을 쓰고, 해당 Slot의 상세값만 선택 가능하다. 미등록 Slot·플래그 `N` 은 비활성.
-- **계정 변경 시 기존 Layer3 값 재검증 (UC-Ledger-04 예외)** — 플래그가 `Y→N` 으로 바뀐 항목에 값이 남아 있으면 **저장이 서버에서 거부된다**(THROW 50464~50466). 따라서 계정 변경 시점에 `<ConfirmDialog />` 로 *"선택한 계정에서 사용하지 않는 관리항목 값이 있습니다. 초기화하시겠습니까?"* 를 확인받고 초기화한다. **사용자 확인 없이 값을 버리지 않는다.** 도메인 계약은 [§7.4](#74-finance) 참조.
+- **계정 변경 시 기존 Layer3 값 재검증 (UC-Ledger-04 예외)** — 플래그가 `Y→N` 으로 바뀐 항목에 값이 남아 있으면 **저장이 서버에서 거부된다**(THROW 50464~50466). 따라서 계정 변경 시점에 `<ConfirmDialog />` 로 _"선택한 계정에서 사용하지 않는 관리항목 값이 있습니다. 초기화하시겠습니까?"_ 를 확인받고 초기화한다. **사용자 확인 없이 값을 버리지 않는다.** 도메인 계약은 [§7.4](#74-finance) 참조.
 - **지급/입금일** — 계정의 `due_date` 플래그 `Y` 인 라인만 활성. 원천거래에 지급정책이 연결되어 있으면 자동 계산값을 채우고, 없으면 권한자가 직접 입력한다([§9.11](#911-지급정책-계산과-전표-지급입금일-fr-term-06-fr-ledger-11)).
 - **은행/카드** — 플래그 `Y` 이면 동일 회사의 **사용중(`status=0`)** 항목만 선택 가능하고, 카드번호는 **마스킹 표시**한다.
 - **라인 순서가 저장 결과를 결정한다** — `line_on` 은 저장 시 배열 순서대로 재부여되므로([§9.1](#91-전표-저장-검증-하나의-트랜잭션-지침-1724)), 그리드의 행 순서를 그대로 전송한다. 선택 상태는 `line_on` 이 아니라 클라이언트 임시 키로 추적한다.
 - **마감연도** — `GET /finance/closings/{yearId}/status` 로 진입 시 마감 여부를 확인해 신규/수정/삭제/승인 버튼을 일괄 비활성화한다. 서버도 동일 조건을 재검증한다(FR-Ledger-16).
 
 ### 12.6 상태 코드 표시
+
 DB 코드값을 UI에 직접 쓰지 않고 Enum/라벨로 변환(`<StatusBadge />`). 예: approval_status(bit) → "미승인/승인", stage(0~6) → 라벨.
 
 ---
@@ -1066,6 +1140,7 @@ DB 코드값을 UI에 직접 쓰지 않고 Enum/라벨로 변환(`<StatusBadge /
 ## 13. 트랜잭션 규칙 (지침 §24)
 
 다음은 반드시 **하나의 DB 트랜잭션**으로 처리하고 부분 성공을 허용하지 않는다:
+
 - Head + Detail 저장 (전표 라인 JSON 일괄 재적재)
 - 전표번호 생성 + 전표 저장
 - 승인 상태 변경 + 승인자/승인일 저장
@@ -1079,12 +1154,12 @@ DB 코드값을 UI에 직접 쓰지 않고 Enum/라벨로 변환(`<StatusBadge /
 
 > **⚠ 예외 17건 — 대부분 무해하나 1건은 실제 결함이다.**
 >
-> | 유형 | 건수 | 평가 |
-> |------|------|------|
-> | `SET NOCOUNT ON` 만 있고 트랜잭션·`XACT_ABORT`·TRY/CATCH 없음 (주로 `_delete`) | 13 | 대부분 **guard-EXISTS + 단일 `DELETE`** 이므로 원자성 문제 없음 |
-> | `XACT_ABORT ON` 만 있고 TRY/CATCH·명시적 트랜잭션 없음 | 2 | 단일문이라 기능상 무해. 오류가 CATCH 재throw 없이 그대로 노출되는 스타일 차이 |
-> | **`usp_finance_dimension_delete`** | 1 | **실제 결함** — `DELETE` **2회**(상세값 → 마스터)를 트랜잭션·`XACT_ABORT` 없이 실행한다. 두 번째가 실패하면 `finance_dimension_detail` 고아행이 남는다 → [부록 C](#부록-c-09_ax_bridge_fixsql-스펙)에서 표준 템플릿으로 재작성 |
-> | `usp_auth_change_password` | 1 | UPDATE 후 THROW 구조. 현재는 단일문이라 무해하나 문장이 추가되면 위험 — 부록 C 대상에 포함 |
+> | 유형                                                                           | 건수 | 평가                                                                                                                                                                                                                           |
+> | ------------------------------------------------------------------------------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+> | `SET NOCOUNT ON` 만 있고 트랜잭션·`XACT_ABORT`·TRY/CATCH 없음 (주로 `_delete`) | 13   | 대부분 **guard-EXISTS + 단일 `DELETE`** 이므로 원자성 문제 없음                                                                                                                                                                |
+> | `XACT_ABORT ON` 만 있고 TRY/CATCH·명시적 트랜잭션 없음                         | 2    | 단일문이라 기능상 무해. 오류가 CATCH 재throw 없이 그대로 노출되는 스타일 차이                                                                                                                                                  |
+> | **`usp_finance_dimension_delete`**                                             | 1    | **실제 결함** — `DELETE` **2회**(상세값 → 마스터)를 트랜잭션·`XACT_ABORT` 없이 실행한다. 두 번째가 실패하면 `finance_dimension_detail` 고아행이 남는다 → [부록 C](#부록-c-09_ax_bridge_fixsql-스펙)에서 표준 템플릿으로 재작성 |
+> | `usp_auth_change_password`                                                     | 1    | UPDATE 후 THROW 구조. 현재는 단일문이라 무해하나 문장이 추가되면 위험 — 부록 C 대상에 포함                                                                                                                                     |
 >
 > **여러 프로시저를 하나의 외부 트랜잭션으로 묶지 않는다** — 내부 CATCH 의 `IF @@TRANCOUNT>0 ROLLBACK` 이 외부 트랜잭션까지 되돌린다([§10.2](#102-프로시저-실행-계층-d1)).
 
@@ -1096,29 +1171,40 @@ FR/UC ID는 코드·테스트·주석에서 추적 가능해야 한다(지침 §
 
 전체 **FR 179건 · UC 135건**. 도메인별 실측 분포:
 
-| 도메인 | FR (건) | UC (건) | FR 접두어 | 대표 API/프로시저 |
-|--------|---------|---------|-----------|-------------------|
-| COMMON | **7** | **5** | FR-UI-01~07 | 공통 UI/Gateway 정책 |
-| SYSTEM | **55** | **50** | Comp 9 · Entity 9 · Dept 8 · Pod 7 · Emp 9 · Year 7 · Admin 6 | `usp_system_*`, `usp_auth_*` |
-| PARTNER | **24** | **18** | Client 8 · Vendor 8 · Term 8 | `usp_partner_*` |
-| SALES | **25** | **21** | Pipe 9 · Act 7 · Contract 9 | `usp_sales_*` |
-| FINANCE | **68** | **41** | GL 14 · Dim 10 · Bank 8 · OpenBal 9 · Ledger 16 · Close 11 | `usp_finance_*` |
-| **합계** | **179** | **135** | 20개 접두어 | 74(+1) 프로시저 |
+| 도메인   | FR (건) | UC (건) | FR 접두어                                                     | 대표 API/프로시저            |
+| -------- | ------- | ------- | ------------------------------------------------------------- | ---------------------------- |
+| COMMON   | **7**   | **5**   | FR-UI-01~07                                                   | 공통 UI/Gateway 정책         |
+| SYSTEM   | **55**  | **50**  | Comp 9 · Entity 9 · Dept 8 · Pod 7 · Emp 9 · Year 7 · Admin 6 | `usp_system_*`, `usp_auth_*` |
+| PARTNER  | **24**  | **18**  | Client 8 · Vendor 8 · Term 8                                  | `usp_partner_*`              |
+| SALES    | **25**  | **21**  | Pipe 9 · Act 7 · Contract 9                                   | `usp_sales_*`                |
+| FINANCE  | **68**  | **41**  | GL 14 · Dim 10 · Bank 8 · OpenBal 9 · Ledger 16 · Close 11    | `usp_finance_*`              |
+| **합계** | **179** | **135** | 20개 접두어                                                   | 74(+1) 프로시저              |
 
 FINANCE가 FR의 38%를 차지하고 UC-Ledger가 단일 접두어 최다(13건)이므로, [§16 로드맵](#16-구현-로드맵-지침-2730--vertical-slice)에서 FINANCE 핵심업무에 가장 큰 비중을 배분한다.
 
 **추적 예시** (테스트명에 ID 포함):
+
 ```typescript
-describe('LedgerApprovalPolicy', () => {
-  it('FR-Ledger-13: 승인된 전표는 일반 수정할 수 없다', () => { /* ... */ });
-  it('FR-Ledger-10: 차변합계 ≠ 대변합계면 승인 거부', () => { /* ... */ });
+describe("LedgerApprovalPolicy", () => {
+  it("FR-Ledger-13: 승인된 전표는 일반 수정할 수 없다", () => {
+    /* ... */
+  });
+  it("FR-Ledger-10: 차변합계 ≠ 대변합계면 승인 거부", () => {
+    /* ... */
+  });
 });
-describe('Pipeline', () => {
-  it('FR-Pipe-07: Closed 전환 시 closedDate를 기록한다', () => { /* ... */ });
+describe("Pipeline", () => {
+  it("FR-Pipe-07: Closed 전환 시 closedDate를 기록한다", () => {
+    /* ... */
+  });
 });
-describe('ClosingService', () => {
-  it('FR-Close-04: 미승인 전표가 있으면 마감 불가', () => { /* ... */ });
-  it('FR-Close-06: 자산계정 이월잔액 = 전년이월 + 차변 − 대변', () => { /* ... */ });
+describe("ClosingService", () => {
+  it("FR-Close-04: 미승인 전표가 있으면 마감 불가", () => {
+    /* ... */
+  });
+  it("FR-Close-06: 자산계정 이월잔액 = 전년이월 + 차변 − 대변", () => {
+    /* ... */
+  });
 });
 ```
 
@@ -1129,6 +1215,7 @@ describe('ClosingService', () => {
 ## 15. 테스트 전략 (지침 §26)
 
 최소 테스트 범위:
+
 1. **Domain Unit Test** — Entity/Policy/VO 규칙(승인·차대균형·Slot·지급정책 계산·마감 이월 계산).
 2. **Application Service Test** — Command/Query 오케스트레이션, 트랜잭션 경계.
 3. **Repository Integration Test** — 실제 MSSQL + 프로시저/트리거 동작(동시성 잠금, THROW 매핑, 참조보호).
@@ -1136,6 +1223,23 @@ describe('ClosingService', () => {
 5. **주요 UI Playwright E2E** — Head/Detail 흐름, F2/Enter Lookup, DirtyGuard, 전표 3-Layer, 마감 순차 실행.
 
 각 테스트명에 FR/UC ID를 포함하여 추적성을 확보한다.
+
+### 15.1 진행 현황 (2026-08-14)
+
+| 범위 | 상태 | 위치 |
+|------|------|------|
+| 1. Domain Unit Test | ✅ **4 suites · 97 tests** | `apps/api/src/modules/*/domain/*.spec.ts` — `jest.config.js`, DB 없이 실행 |
+| 2. Application Service Test | ⬜ 미작성 | — |
+| 3. Repository Integration Test | ⬜ 미작성 | **다음 우선순위.** `usp_finance_closing_execute` → `usp_finance_closing_reopen` 왕복의 `source='CLOSING'` 회수는 실제 DB 로만 확인된다 |
+| 4. API E2E Test | ⬜ 미작성 | 테넌트 격리(FR-Bank-08)·403·AX-50xxx 매핑이 대상 |
+| 5. UI Playwright E2E | ⬜ 미도입 | — |
+
+Domain 스펙이 고정한 것 중 **회귀하면 조용히 틀릴 수 있는 규칙**들:
+
+- `LedgerLine.conflictsWith()` 는 값을 **지우지 않는다**. 사용자 확인 전 무단 폐기 금지가 설계 의도이므로([§7.4](#74-finance)) 이 성질을 테스트가 잡아 둔다.
+- `Ledger.approve()` 는 **마감 검사를 승인여부 검사보다 먼저** 한다. 두 조건이 겹칠 때 어떤 메시지가 나가는지가 사용자 안내의 정확성을 좌우한다.
+- `linesToJson()` 의 컬럼명은 `Team_id`·`employee_Id` 처럼 **대소문자가 섞여 있다** — 프로시저 `OPENJSON` 스키마와 한 글자라도 어긋나면 값이 조용히 NULL 이 된다.
+- 지급정책의 월말 보정과 윤년 처리는 프로시저 `usp_partner_term_calc_due` 와 **같은 결과**여야 한다(미리보기와 저장이 갈리면 안 된다). 등가성 자체는 3번 Integration Test 가 확인할 몫으로 남아 있다.
 
 ---
 
@@ -1161,19 +1265,20 @@ Phase 7  통합             : E2E · 성능 · 권한 · Audit
 
 **실행 순서를 반드시 지킨다: `01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09`**
 
-| 스크립트 | 내용 | 재실행 |
-|----------|------|--------|
-| `01` | 테이블 20종 DDL + Bootstrap 시드. **FK 길이 결함 수정 적용됨**([C.1](#c1-배포-차단-결함--01-에서-직접-수정함-d3-예외--적용-완료)) | ❌ **파괴적** — 가드 없는 `CREATE TABLE`/`CREATE UNIQUE INDEX` (시드만 `WHERE NOT EXISTS` 가드) |
-| `02`~`05` | 프로시저 71건 (`CREATE OR ALTER`) | ✅ |
-| `06` | 트리거 9건 | ✅ |
-| `07` | 표준 GL seed 355행 | ⚠️ **`TRUNCATE TABLE finance_GL_seed` 로 시작** — 전량 교체됨 |
-| `08` | v3.0 개정 — `finance_closing` 신설, `open_balance.bank_id` 추가, **프로시저 3건 신규 + 8건 교체**, **트리거 1건 신규 + 3건 교체** | ✅ 완전 가드 |
-| `09` | **D3 신설** — 결함 수정 + 무결성 보강 ([부록 C](#부록-c-09_ax_bridge_fixsql-스펙)) | ✅ 멱등 작성 필수 |
+| 스크립트  | 내용                                                                                                                              | 재실행                                                                                          |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `01`      | 테이블 20종 DDL + Bootstrap 시드. **FK 길이 결함 수정 적용됨**([C.1](#c1-배포-차단-결함--01-에서-직접-수정함-d3-예외--적용-완료)) | ❌ **파괴적** — 가드 없는 `CREATE TABLE`/`CREATE UNIQUE INDEX` (시드만 `WHERE NOT EXISTS` 가드) |
+| `02`~`05` | 프로시저 71건 (`CREATE OR ALTER`)                                                                                                 | ✅                                                                                              |
+| `06`      | 트리거 9건                                                                                                                        | ✅                                                                                              |
+| `07`      | 표준 GL seed 355행                                                                                                                | ⚠️ **`TRUNCATE TABLE finance_GL_seed` 로 시작** — 전량 교체됨                                   |
+| `08`      | v3.0 개정 — `finance_closing` 신설, `open_balance.bank_id` 추가, **프로시저 3건 신규 + 8건 교체**, **트리거 1건 신규 + 3건 교체** | ✅ 완전 가드                                                                                    |
+| `09`      | **D3 신설** — 결함 수정 + 무결성 보강 ([부록 C](#부록-c-09_ax_bridge_fixsql-스펙))                                                | ✅ 멱등 작성 필수                                                                               |
 
 > **⚠ `08` 은 `05`/`06` 의 객체를 덮어쓴다.** 교체 대상: 프로시저 `usp_finance_openbalance_list/_save/_close/_reopen`, `usp_finance_ledger_head_save/_detail_save/_approve/_delete` 8건과 트리거 `trg_finance_ledger_head_protect`·`_detail_protect`·`trg_finance_open_balance_protect` 3건.
 > **순서가 역전되면 v3.0의 마감연도 잠금이 전부 소실**된다(`08` 의 전표 프로시저 4건이 `usp_finance_check_year_open` 을 첫 문장으로 호출하는 부분이 사라진다). `08` 의 11개 CREATE 중 **진짜 신규는 3건**(`usp_finance_check_year_open`, `usp_finance_closing_list`, `usp_finance_closing_execute`)뿐이다.
 
 **Prisma 와의 관계**
+
 - **DDL 정본은 `db/01~09/*.sql`** 이다. Prisma Migration 이 스키마 변경의 주체가 **아니다.**
 - `prisma db pull` 로 `schema.prisma` 를 DB에서 역생성하고, `@map`/`@@map` 으로 camelCase 를 부여한다([§10.1](#101-repository-규칙-지침-13-25)).
 - `prisma/migrations/` 는 **사용하지 않거나**, 사용한다면 `db/*.sql` 을 그대로 담은 baseline 1건으로만 둔다. 이중 관리를 금지한다.
@@ -1236,42 +1341,42 @@ Claude/개발자가 **한 슬라이스를 시작하기 전에** 아래 12항목�
 
 > **⚠ `status` 극성이 도메인별로 반대다.** 코드에서 리터럴을 직접 비교하지 말고 Mapper 를 경유한다 — [§9.9](#99-참조-무결성과-soft-disabledelete-지침-20).
 
-| 항목 | 코드 | 의미 |
-|------|------|------|
-| status (company/entity/pod/team/bank) | 0 / 1 | **0:사용** / 1:미사용 |
-| status (term/client/vendor/GL/dimension) | 1 / 0 | **1:Y 사용** / 0:N |
-| user_yn | 1 / 0 | Y 사용자 / N |
-| employee status | planned/probation/active/on_leave/leaving_soon/inactive | 재직상태 6종 |
-| partner_term base_rule | EOM / CURM | 월말기준 / 당월기준 |
-| pipeline_type | 0~4 | 대행/사입/리테일/마케팅/기타 |
-| pipeline stage | 0~6 | Lead/QualifiedLead/Suggest/Meeting/Nego/Closed/Canceled |
-| activity type | 0~3 | 메일/전화/미팅/기타 |
-| contract_type | 0~5 | 계약 유형 |
-| contract status | 0~2 | Active/Inactive/Suspend |
-| gl_type | 0~10 | 자산/부채/자본/수익/매출원가/제조원가/용역원가/판매관리비/영업외수익/영업외비용/법인세 등 |
-| gl_detail | 0 / 1 | 보통계정 / 차감항목 |
-| vat_gl | 매입부가가치세 / 매출부가가치세 / NULL | 부가세 구분 |
-| DRCR | 1 / 2 | 차변 / 대변 |
-| ledger_type | 0~3 | 일반/매입/매출/결산 |
-| approval_status | 0 / 1 | 미승인 / 승인 |
-| open_balance.closed | 0 / 1 | 미확정 / 확정 |
-| closing.closing | 0 / 1 | 미마감 / 회계마감 |
-| Dimension slot_no | 1~5 | 관리항목 Slot |
+| 항목                                     | 코드                                                    | 의미                                                                                      |
+| ---------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| status (company/entity/pod/team/bank)    | 0 / 1                                                   | **0:사용** / 1:미사용                                                                     |
+| status (term/client/vendor/GL/dimension) | 1 / 0                                                   | **1:Y 사용** / 0:N                                                                        |
+| user_yn                                  | 1 / 0                                                   | Y 사용자 / N                                                                              |
+| employee status                          | planned/probation/active/on_leave/leaving_soon/inactive | 재직상태 6종                                                                              |
+| partner_term base_rule                   | EOM / CURM                                              | 월말기준 / 당월기준                                                                       |
+| pipeline_type                            | 0~4                                                     | 대행/사입/리테일/마케팅/기타                                                              |
+| pipeline stage                           | 0~6                                                     | Lead/QualifiedLead/Suggest/Meeting/Nego/Closed/Canceled                                   |
+| activity type                            | 0~3                                                     | 메일/전화/미팅/기타                                                                       |
+| contract_type                            | 0~5                                                     | 계약 유형                                                                                 |
+| contract status                          | 0~2                                                     | Active/Inactive/Suspend                                                                   |
+| gl_type                                  | 0~10                                                    | 자산/부채/자본/수익/매출원가/제조원가/용역원가/판매관리비/영업외수익/영업외비용/법인세 등 |
+| gl_detail                                | 0 / 1                                                   | 보통계정 / 차감항목                                                                       |
+| vat_gl                                   | 매입부가가치세 / 매출부가가치세 / NULL                  | 부가세 구분                                                                               |
+| DRCR                                     | 1 / 2                                                   | 차변 / 대변                                                                               |
+| ledger_type                              | 0~3                                                     | 일반/매입/매출/결산                                                                       |
+| approval_status                          | 0 / 1                                                   | 미승인 / 승인                                                                             |
+| open_balance.closed                      | 0 / 1                                                   | 미확정 / 확정                                                                             |
+| closing.closing                          | 0 / 1                                                   | 미마감 / 회계마감                                                                         |
+| Dimension slot_no                        | 1~5                                                     | 관리항목 Slot                                                                             |
 
 ## 부록 B. 오류코드 체계
 
 번호 체계는 `50` + 도메인 숫자 + `xx` 이고, 오브젝트별로 10 단위 서브블록(`x01`, `x11`, `x21`…)을 쓴다.
 
-| 범위 | 계층 | 실제 사용 코드 |
-|------|------|----------------|
-| 50001·50002 | AUTH | **2건뿐**, 둘 다 `usp_auth_change_password`(빈 해시 / 대상 없음·`user_yn=0`). `usp_auth_get_credential`·`_update_last_login` 은 THROW 하지 않는다 |
-| 501xx | SYSTEM (프로시저) | company 50101~03 · entity 50111~14 · pod 50121~23 · team 50131~36 · employee 50141~47 · year 50151~56 |
-| 502xx | PARTNER | term 50201~06 · client 50211~15 · vendor 50221~25 |
-| 503xx | SALES | pipeline 50301~06 · link/delete 50311~15 · activity 50321~24 · contract 50331~37 · link_ledger/delete 50341~45 |
-| 504xx | FINANCE (프로시저) | GL 50401~07 · generate_standard 50411~12 · dimension 50421~28 · openbalance_save 50431~37 · close/reopen 50441~43 · ledger_head 50451~52 · ledger_detail 50461~66 · approve 50471~73 · delete 50474~75 · bank 50481~87 |
-| 505xx | FINANCE v3 (마감·초기이월) | check_year_open **50501** · closing_execute 50511~16 · openbalance v3 50521~24 · **closing_reopen 50531~35 (D4 신설)** |
-| 51xxx | 트리거 (DB 계층 이중 방어) | 51001 · 51011 · 51012 · 51021 · 51031 · 51041 · **51051~51054**(v3 마감 잠금) |
-| 59xxx | **마이그레이션 스크립트 전용** (`09`) | 59001 (제약 추가 전 기존 데이터 위반 검사). 런타임에 발생하지 않으므로 `AX-` 매핑 대상이 아니다 |
+| 범위        | 계층                                  | 실제 사용 코드                                                                                                                                                                                                         |
+| ----------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 50001·50002 | AUTH                                  | **2건뿐**, 둘 다 `usp_auth_change_password`(빈 해시 / 대상 없음·`user_yn=0`). `usp_auth_get_credential`·`_update_last_login` 은 THROW 하지 않는다                                                                      |
+| 501xx       | SYSTEM (프로시저)                     | company 50101~03 · entity 50111~14 · pod 50121~23 · team 50131~36 · employee 50141~47 · year 50151~56                                                                                                                  |
+| 502xx       | PARTNER                               | term 50201~06 · client 50211~15 · vendor 50221~25                                                                                                                                                                      |
+| 503xx       | SALES                                 | pipeline 50301~06 · link/delete 50311~15 · activity 50321~24 · contract 50331~37 · link_ledger/delete 50341~45                                                                                                         |
+| 504xx       | FINANCE (프로시저)                    | GL 50401~07 · generate_standard 50411~12 · dimension 50421~28 · openbalance_save 50431~37 · close/reopen 50441~43 · ledger_head 50451~52 · ledger_detail 50461~66 · approve 50471~73 · delete 50474~75 · bank 50481~87 |
+| 505xx       | FINANCE v3 (마감·초기이월)            | check_year_open **50501** · closing_execute 50511~16 · openbalance v3 50521~24 · **closing_reopen 50531~35 (D4 신설)**                                                                                                 |
+| 51xxx       | 트리거 (DB 계층 이중 방어)            | 51001 · 51011 · 51012 · 51021 · 51031 · 51041 · **51051~51054**(v3 마감 잠금)                                                                                                                                          |
+| 59xxx       | **마이그레이션 스크립트 전용** (`09`) | 59001 (제약 추가 전 기존 데이터 위반 검사). 런타임에 발생하지 않으므로 `AX-` 매핑 대상이 아니다                                                                                                                        |
 
 **⚠ 매핑 테이블 작성 시 주의할 3가지**
 
@@ -1359,14 +1464,14 @@ IF (@ledger_date IS NULL) <> (@ledger_no IS NULL)
 
 ### C.2 무결성 보강 (D5 범위)
 
-| # | 대상 | 문제 | 조치 |
-|---|------|------|------|
-| 1 | `finance_open_balance` | **PRIMARY KEY 없음**(힙). 유일성은 `UX_open_balance` 인덱스로만 보장 | `UX_open_balance` 와 동일 컬럼 집합으로 PK 추가 |
-| 2 | `finance_bank_account` | `CK_bank_shape` 가 "둘 다 NOT NULL 금지"뿐 → **둘 다 NULL 인 행이 합법**. "둘 중 하나 필수"는 프로시저에만 존재 | XOR 을 완성하는 CHECK 로 교체 |
-| 3 | `finance_bank_account` | 회사 내 `bank_account`/`card_number` **중복 금지 DDL 없음** | 필터 유니크 인덱스 2건 추가 (`WHERE ... IS NOT NULL`) |
-| 4 | `finance_dimension_detail` | 동일 항목 내 `dimension_value` **중복 금지 DDL 없음** | 유니크 인덱스 추가 |
-| 5 | `finance_open_balance` | **출처 구분 컬럼 없음** → 회계마감 해제 불가([§9.6](#96-연도-회계마감-해제-d4--신설)) | `source varchar(10) NOT NULL DEFAULT 'MANUAL'` 추가 (`MANUAL` \| `CLOSING`) + CHECK |
-| 6 | `finance_ledger_head` | `approved_date date` — 승인 시각이 일 단위 (**D8**) | `datetime2(0)` 으로 변경. **C.3 의 `usp_finance_ledger_approve` 수정과 반드시 동반** |
+| #   | 대상                       | 문제                                                                                                            | 조치                                                                                 |
+| --- | -------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 1   | `finance_open_balance`     | **PRIMARY KEY 없음**(힙). 유일성은 `UX_open_balance` 인덱스로만 보장                                            | `UX_open_balance` 와 동일 컬럼 집합으로 PK 추가                                      |
+| 2   | `finance_bank_account`     | `CK_bank_shape` 가 "둘 다 NOT NULL 금지"뿐 → **둘 다 NULL 인 행이 합법**. "둘 중 하나 필수"는 프로시저에만 존재 | XOR 을 완성하는 CHECK 로 교체                                                        |
+| 3   | `finance_bank_account`     | 회사 내 `bank_account`/`card_number` **중복 금지 DDL 없음**                                                     | 필터 유니크 인덱스 2건 추가 (`WHERE ... IS NOT NULL`)                                |
+| 4   | `finance_dimension_detail` | 동일 항목 내 `dimension_value` **중복 금지 DDL 없음**                                                           | 유니크 인덱스 추가                                                                   |
+| 5   | `finance_open_balance`     | **출처 구분 컬럼 없음** → 회계마감 해제 불가([§9.6](#96-연도-회계마감-해제-d4--신설))                           | `source varchar(10) NOT NULL DEFAULT 'MANUAL'` 추가 (`MANUAL` \| `CLOSING`) + CHECK  |
+| 6   | `finance_ledger_head`      | `approved_date date` — 승인 시각이 일 단위 (**D8**)                                                             | `datetime2(0)` 으로 변경. **C.3 의 `usp_finance_ledger_approve` 수정과 반드시 동반** |
 
 > **마이그레이션 전용 오류코드 `59xxx`** — `09` 는 제약을 추가하기 전에 기존 데이터가 새 제약을 위반하는지 검사하고, 위반 시 `THROW 59001` 로 중단한다(예: 계좌·카드가 모두 비어 있는 은행 행). 이 대역은 **스크립트 실행 시점에만** 쓰이며 런타임 업무 오류(`50xxx`)·트리거(`51xxx`)와 겹치지 않는다. Application 의 `AX-` 매핑 테이블에 등록하지 않는다.
 
@@ -1411,14 +1516,14 @@ ALTER TABLE dbo.finance_ledger_head ALTER COLUMN approved_date datetime2(0) NULL
 
 ### C.3 프로시저 결함 수정
 
-| 프로시저 | 결함 | 조치 |
-|----------|------|------|
-| `usp_finance_dimension_delete` | `DELETE` 2회(상세값 → 마스터)를 트랜잭션·`XACT_ABORT` 없이 실행 → **비원자적**, 고아행 발생 가능 | 표준 템플릿(`SET XACT_ABORT ON` + `BEGIN TRY/TRAN` + `CATCH ROLLBACK; THROW`)으로 재작성 |
-| `usp_finance_gl_generate_standard` | `SELECT @@ROWCOUNT AS inserted_count` 가 `sp_set_session_context`·`COMMIT` **뒤에** 있어 항상 무의미한 값 반환 | seed INSERT **직후** `DECLARE @n int = @@ROWCOUNT;` 로 포착한 뒤 마지막에 `SELECT @n AS inserted_count`. `usp_finance_closing_execute` 가 이미 올바른 패턴을 쓴다 |
-| `usp_sales_activity_save` | `activity_id` = `'ACT'+yyMMddHHmmssff`, **잠금 없음 · 1/100초 해상도** → 동시 등록 시 충돌(THROW 50323) | 충돌 시 재시도 루프(최대 5회) 추가. Application 도 50323 을 재시도 가능 오류로 분류([§9.12](#912-식별자-자동생성-규칙)) |
-| `usp_auth_change_password` | `XACT_ABORT`·TRY/CATCH 없음. 현재는 단일문이라 무해하나 확장 시 위험 | 표준 템플릿 적용 |
-| **`usp_finance_ledger_approve`** | `approved_date = CONVERT(date, GETDATE())` — **C.2-6 으로 컬럼을 `datetime2(0)` 로 넓혀도 이 문장을 두면 자정 시각만 저장되어 D8이 무의미해진다** | `SYSDATETIME()` 으로 변경. **C.2-6 과 반드시 함께 적용** |
-| `usp_finance_closing_execute` | 자동생성 이월 행에 출처 표시가 없어 회수 불가 | 차년도 INSERT 시 **`source='CLOSING'`** 기록 (C.2-5 선결) |
+| 프로시저                           | 결함                                                                                                                                              | 조치                                                                                                                                                              |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `usp_finance_dimension_delete`     | `DELETE` 2회(상세값 → 마스터)를 트랜잭션·`XACT_ABORT` 없이 실행 → **비원자적**, 고아행 발생 가능                                                  | 표준 템플릿(`SET XACT_ABORT ON` + `BEGIN TRY/TRAN` + `CATCH ROLLBACK; THROW`)으로 재작성                                                                          |
+| `usp_finance_gl_generate_standard` | `SELECT @@ROWCOUNT AS inserted_count` 가 `sp_set_session_context`·`COMMIT` **뒤에** 있어 항상 무의미한 값 반환                                    | seed INSERT **직후** `DECLARE @n int = @@ROWCOUNT;` 로 포착한 뒤 마지막에 `SELECT @n AS inserted_count`. `usp_finance_closing_execute` 가 이미 올바른 패턴을 쓴다 |
+| `usp_sales_activity_save`          | `activity_id` = `'ACT'+yyMMddHHmmssff`, **잠금 없음 · 1/100초 해상도** → 동시 등록 시 충돌(THROW 50323)                                           | 충돌 시 재시도 루프(최대 5회) 추가. Application 도 50323 을 재시도 가능 오류로 분류([§9.12](#912-식별자-자동생성-규칙))                                           |
+| `usp_auth_change_password`         | `XACT_ABORT`·TRY/CATCH 없음. 현재는 단일문이라 무해하나 확장 시 위험                                                                              | 표준 템플릿 적용                                                                                                                                                  |
+| **`usp_finance_ledger_approve`**   | `approved_date = CONVERT(date, GETDATE())` — **C.2-6 으로 컬럼을 `datetime2(0)` 로 넓혀도 이 문장을 두면 자정 시각만 저장되어 D8이 무의미해진다** | `SYSDATETIME()` 으로 변경. **C.2-6 과 반드시 함께 적용**                                                                                                          |
+| `usp_finance_closing_execute`      | 자동생성 이월 행에 출처 표시가 없어 회수 불가                                                                                                     | 차년도 INSERT 시 **`source='CLOSING'`** 기록 (C.2-5 선결)                                                                                                         |
 
 > **`trg_finance_ledger_head_protect` 는 수정 불필요** — INSTEAD OF UPDATE 경로에서 `approved_date=i.approved_date` 로 값을 그대로 복사하므로 타입 변경에 영향받지 않는다.
 >
@@ -1456,13 +1561,13 @@ END CATCH
 
 **전 항목 적용 완료.** 산출물: `Planning_Docs/09_AX_Bridge_Fix.sql` (멱등, 21 배치)
 
-| 항목 | 상태 |
-|------|------|
-| **C.1-1** `01` FK 길이 불일치 | ✅ `01_AX_Bridge_Tables.sql` 직접 수정 (D3 예외) |
-| **C.1-2** `04` T-SQL 구문 오류 | ✅ `04_AX_Bridge_Procs_SALES.sql` 직접 수정 (D3 예외) |
-| **C.2** 무결성 보강 6건 | ✅ `09` §1 — PK · XOR CHECK · 유니크 3종 · `source` · `approved_date` |
-| **C.3** 프로시저 결함 6건 | ✅ `09` §2 — dimension_delete · gl_generate_standard · activity_save · change_password · **ledger_approve** · closing_execute |
-| **C.4** `usp_finance_closing_reopen` | ✅ `09` §3 — 검증 5종(50531~50535) 포함 |
+| 항목                                 | 상태                                                                                                                          |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| **C.1-1** `01` FK 길이 불일치        | ✅ `01_AX_Bridge_Tables.sql` 직접 수정 (D3 예외)                                                                              |
+| **C.1-2** `04` T-SQL 구문 오류       | ✅ `04_AX_Bridge_Procs_SALES.sql` 직접 수정 (D3 예외)                                                                         |
+| **C.2** 무결성 보강 6건              | ✅ `09` §1 — PK · XOR CHECK · 유니크 3종 · `source` · `approved_date`                                                         |
+| **C.3** 프로시저 결함 6건            | ✅ `09` §2 — dimension_delete · gl_generate_standard · activity_save · change_password · **ledger_approve** · closing_execute |
+| **C.4** `usp_finance_closing_reopen` | ✅ `09` §3 — 검증 5종(50531~50535) 포함                                                                                       |
 
 **적용 후 검증 결과**
 
@@ -1472,13 +1577,13 @@ END CATCH
 
 **갱신되는 수치**
 
-| 항목 | 변경 |
-|------|------|
-| 저장 프로시저 | 74 → **75** (`usp_finance_closing_reopen` 신설) |
-| REST 엔드포인트 | 92 → **93** (`POST /finance/closings/{yearId}/reopen`) |
-| 트리거 | **10** (변동 없음 — 마감해제는 신규 트리거를 요구하지 않는다) |
-| 테이블 | **21** (변동 없음. `finance_open_balance` 에 `source` 컬럼 1개 추가) |
-| SQL 스크립트 | `01~08` → **`01~09`** |
+| 항목            | 변경                                                                 |
+| --------------- | -------------------------------------------------------------------- |
+| 저장 프로시저   | 74 → **75** (`usp_finance_closing_reopen` 신설)                      |
+| REST 엔드포인트 | 92 → **93** (`POST /finance/closings/{yearId}/reopen`)               |
+| 트리거          | **10** (변동 없음 — 마감해제는 신규 트리거를 요구하지 않는다)        |
+| 테이블          | **21** (변동 없음. `finance_open_balance` 에 `source` 컬럼 1개 추가) |
+| SQL 스크립트    | `01~08` → **`01~09`**                                                |
 
 ### C.6 실 DB 적용 및 검증 결과 ✅
 
@@ -1487,32 +1592,32 @@ END CATCH
 
 **개체 생성 결과 — 설계서 수치와 완전 일치**
 
-| 항목 | 기대 | 실제 |
-|------|------|------|
-| 테이블 | 21 | **21** ✅ |
-| 저장 프로시저 | 75 | **75** ✅ |
-| 트리거 | 10 | **10** ✅ |
-| 표준 GL seed | 355 | **355** ✅ |
-| built-in admin | 1 | **1** ✅ |
+| 항목           | 기대 | 실제       |
+| -------------- | ---- | ---------- |
+| 테이블         | 21   | **21** ✅  |
+| 저장 프로시저  | 75   | **75** ✅  |
+| 트리거         | 10   | **10** ✅  |
+| 표준 GL seed   | 355  | **355** ✅ |
+| built-in admin | 1    | **1** ✅   |
 
 무결성 제약 전수 확인: `PK_finance_open_balance` ✅ (**계산컬럼 PK 가 정상 생성되어 대체 인덱스는 불필요**) · `CK_bank_one` ✅ · `CK_bank_shape` 제거 ✅ · `UX_bank_account` ✅ · `UX_bank_card` ✅ · `UX_dim_value` ✅ · `open_balance.source varchar(10)` ✅ · `approved_date datetime2` ✅ · `FK_client_term`/`FK_vendor_term` ✅
 
 **기능 검증 (FINANCE 라이프사이클 왕복)**
 
-| # | 검증 | 결과 |
-|---|------|------|
-| 1 | Layer3 플래그 강제 — 플래그 Y 항목 누락 시 저장 거부 | ✅ 50464 |
-| 2 | `line_on` JSON 배열 순서대로 1,2 재부여 | ✅ |
-| 3 | 차대 불균형 승인 거부 (차액 메시지 포함) | ✅ 50473 |
-| 4 | **D8 초 단위 승인시각** — `approved_date = 2026-08-13 23:10:22` | ✅ |
-| 5 | 승인 전표 직접 UPDATE 차단 (트리거) | ✅ 51012 |
-| 6 | 회계마감 → 차년도 이월 생성, **`source='CLOSING'`** | ✅ 4행 |
-| 7 | 마감연도 전표 수정 차단 | ✅ 50501 |
-| 8 | **회계마감 해제 (신규)** — 이월 4행 회수, `closing=0`, `closing_date=NULL` | ✅ |
-| 9 | 미마감 연도 해제 거부 | ✅ 50532 |
-| 10 | 재마감 왕복 — 이월 행·금액이 최초 마감과 동일 | ✅ 멱등 |
-| 11 | 전표 존재 시 표준 GL 재생성 차단 | ✅ 50411 |
-| 12 | 선행연도 미마감 시 후행 마감 거부 | ✅ 50513 |
+| #   | 검증                                                                       | 결과     |
+| --- | -------------------------------------------------------------------------- | -------- |
+| 1   | Layer3 플래그 강제 — 플래그 Y 항목 누락 시 저장 거부                       | ✅ 50464 |
+| 2   | `line_on` JSON 배열 순서대로 1,2 재부여                                    | ✅       |
+| 3   | 차대 불균형 승인 거부 (차액 메시지 포함)                                   | ✅ 50473 |
+| 4   | **D8 초 단위 승인시각** — `approved_date = 2026-08-13 23:10:22`            | ✅       |
+| 5   | 승인 전표 직접 UPDATE 차단 (트리거)                                        | ✅ 51012 |
+| 6   | 회계마감 → 차년도 이월 생성, **`source='CLOSING'`**                        | ✅ 4행   |
+| 7   | 마감연도 전표 수정 차단                                                    | ✅ 50501 |
+| 8   | **회계마감 해제 (신규)** — 이월 4행 회수, `closing=0`, `closing_date=NULL` | ✅       |
+| 9   | 미마감 연도 해제 거부                                                      | ✅ 50532 |
+| 10  | 재마감 왕복 — 이월 행·금액이 최초 마감과 동일                              | ✅ 멱등  |
+| 11  | 전표 존재 시 표준 GL 재생성 차단                                           | ✅ 50411 |
+| 12  | 선행연도 미마감 시 후행 마감 거부                                          | ✅ 50513 |
 
 **검증으로 확인된 설계 사실 2건**
 
@@ -1526,7 +1631,9 @@ END CATCH
 > **본 설계서의 정본 관계** — 업무 규칙·화면 요구는 `AX_Bridge.xlsx`(FR/UC)와 화면기획서, DB 구현은 `01~08_*.sql` **+ `09_AX_Bridge_Fix.sql`([부록 C](#부록-c-09_ax_bridge_fixsql-스펙))**, 프로시저·트리거·API 세부는 `AX_Bridge_DB_API_명세서.xlsx` 를 정본으로 한다. 본 문서는 이들을 구현 관점에서 통합한 상위 설계이며, 상충 시 각 정본과 개발 지침(`AX_Bridge_MSSQL_Development_Guideline.md`)을 우선한다.
 >
 > **단, 다음 항목은 본 설계서가 정본을 상회한다** — 원본 산출물의 결함을 검증으로 확인한 결과이기 때문이다.
+>
 > - 수량(테이블 21 · FR 179 · UC 135) — `AX_Bridge_DB_API_명세서.xlsx` 변경이력의 "테이블 21종"(v1.0 시점)과 설계서 초판의 "22종"은 모두 부정확했다.
 > - [부록 C](#부록-c-09_ax_bridge_fixsql-스펙) 의 결함 목록 — SQL 원본을 직접 대조해 확인한 사항이다.
 > - 오류코드 50443 사문화 · 50521 중복 — `AX_Bridge_DB_API_명세서.xlsx` 개요 시트는 505xx 대역 자체를 누락하고 있다.
 > - 마감연도 잠금이 `SESSION_CONTEXT` 플래그보다 **우선**한다는 사실 — `08` 의 트리거 구현이 근거다.
+>   1

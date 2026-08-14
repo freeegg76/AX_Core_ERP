@@ -61,30 +61,12 @@ export class FinanceRepository {
     });
   }
 
-  listGl(scope: CompanyScope, p: {
-    keyword?: string | null;
-    glType?: string | null;
-    category1?: string | null;
-    category2?: string | null;
-    vatGl?: string | null;
-    status?: 0 | 1 | null;
-    searchMode?: string | null;
-    activeOnly?: boolean;
-  }) {
-    return this.proc.exec('usp_finance_gl_list', {
-      in: {
-        ...scope.toProcInput(),
-        gl_keyword: escapeLike(p.keyword),
-        gl_type: p.glType ?? null,
-        gl_category1: p.category1 ?? null,
-        gl_category2: p.category2 ?? null,
-        vat_gl: p.vatGl ?? null,
-        status: p.status ?? null,
-        search_mode: p.searchMode ?? null,
-        active_only: p.activeOnly ? 1 : 0,
-      },
-    });
-  }
+  /*
+   * 계정 목록은 여기에 없다. `usp_finance_gl_list` 는 gl_id·gl_name 2열만 반환하는데
+   * 화면기획서 5-1 ② 는 좌측 Head 에 계정구분까지 3열을 요구한다. D2 원칙대로
+   * `FinanceQuery.gl()`(Prisma)이 담당하며, 부수 효과로 실제 페이징이 붙는다.
+   * 프로시저는 DB 에 남아 있지만 애플리케이션은 호출하지 않는다.
+   */
 
   /** 상세 + Slot1~5 실제 관리항목명 (LEFT JOIN 5회) */
   getGl(scope: CompanyScope, glId: string) {

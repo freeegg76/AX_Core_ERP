@@ -6,7 +6,7 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
-    "test": "jest --passWithNoTests",
+    "test": "jest",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {

@@ -20,7 +20,7 @@
 | Grid | AG Grid | Ant Design `Table` — 별도 그리드 라이브러리를 도입하지 않았다 |
 | Primary Key | UNIQUEIDENTIFIER 기술키 우선 | **복합 업무키**(§9 개정) — 프로시저·트리거 산출물이 복합키를 전제한다 |
 | 폴더 구조 | 계층별 4단 중첩 | 도메인당 4파일 수준으로 평탄화(§4·§6) |
-| 테스트 | Unit / Integration / E2E | **미작성** — 러너만 배선되어 있다(§26·§32) |
+| 테스트 | Unit / Integration / E2E | **Domain 단위 테스트 97건만 있다**(api). Integration·E2E 는 미작성(§26·§32) |
 
 ---
 
@@ -59,6 +59,10 @@ AX Bridge는 SYSTEM, PARTNER, SALES, FINANCE 도메인이 서로 강하게 연�
 - Vitest — 러너만 배선(`--passWithNoTests`), 테스트는 아직 없다
 - Playwright `[미도입]`
 
+> 프런트엔드에는 검증할 순수 규칙이 거의 없다 — 업무 판정은 전부 백엔드 Domain 과
+> 프로시저에 있고 화면은 그 결과를 표시한다. 그래서 테스트 투자를 백엔드 Domain 에
+> 먼저 했다(§26). 화면 쪽은 단위 테스트보다 E2E 가 값을 낼 자리다.
+
 ### Backend
 
 - NestJS 11 · TypeScript 5.7
@@ -69,7 +73,7 @@ AX Bridge는 SYSTEM, PARTNER, SALES, FINANCE 도메인이 서로 강하게 연�
 - OpenAPI / Swagger (`@nestjs/swagger`) — `/api/v1/docs`
 - `@nestjs/throttler` — 사용자당 120 req/min 전역 Guard
 - `class-validator` / `class-transformer` — 전역 `ValidationPipe`(`forbidNonWhitelisted: true`)
-- Jest — 러너만 배선, 테스트는 아직 없다
+- Jest + ts-jest — `jest.config.js`, Domain 스펙 97건(§26)
 
 ### Database
 
@@ -1257,26 +1261,32 @@ describe('Pipeline', () => {
 - API E2E Test
 - 주요 UI Playwright E2E
 
-### 현황 `[as-built]` — ⚠ 미이행
-
-**테스트는 아직 한 건도 작성하지 않았다.** 러너만 배선되어 있고 둘 다 통과 처리된다.
+### 현황 `[as-built]` — Domain 단위 테스트만 있다
 
 ```text
-apps/api   jest --passWithNoTests      테스트 파일 0개
-apps/web   vitest run --passWithNoTests  테스트 파일 0개
-Playwright  미도입
+apps/api   jest (jest.config.js)   4 suites · 97 tests   ✅
+apps/web   vitest --passWithNoTests   테스트 파일 0개    ⬜
+Repository Integration               미작성              ⬜
+API E2E                              미작성              ⬜
+Playwright                           미도입              ⬜
 ```
 
-`pnpm test` 가 초록이어도 그것은 "테스트가 없다"는 뜻이지 "검증되었다"는 뜻이 아니다.
-착수 시 우선순위가 높은 순서는 다음과 같다 — 모두 DB 없이 돌릴 수 있는 것부터다.
+작성된 Domain 스펙 — 모두 DB·NestJS 컨텍스트 없이 돈다:
 
-1. `finance/domain/ledger.ts` — 차대 균형·승인 상태 전이·Layer3 충돌 판정
-2. `partner/domain/payment-term.strategy.ts` — EOM / CURM 지급일 계산(월말 보정·윤년)
-3. `sales/domain/pipeline.ts` — 스테이지 전이와 `closed_date`
-4. `system/domain/employee-account.policy.ts` — `user_yn` 과 자격증명 규칙
+| 파일 | 다루는 규칙 |
+|---|---|
+| `finance/domain/ledger.spec.ts` | 라인 불변식(금액·차대·계정), 플래그↔값 정합, 계정변경 충돌 미리보기가 **값을 지우지 않는다**는 것, 차대 균형·승인·마감 가드의 검사 순서, `@lines_json` 직렬화 계약 |
+| `partner/domain/payment-term.strategy.spec.ts` | EOM+N / CurM DD, 월말 보정과 윤년, 연도 경계, `CK_term_shape` 와 같은 조합 검증, DB 가 문자열로 돌려줄 때의 해석 |
+| `sales/domain/pipeline.spec.ts` | 단계 전이, 수주 시 고객사 필수, 재오픈, 드롭다운 경로(`changeStage`), `closed_date` 를 Entity 가 만들지 않는다는 것 |
+| `system/domain/employee-account.policy.spec.ts` | `user_yn` ↔ `user_id` ↔ 초기 비밀번호 조합, 수정 시 미입력은 기존 해시 유지, inactive 와 계정 공존 금지 |
 
-그 다음이 프로시저를 실제로 태우는 Repository Integration Test 다 — 마감·초기이월처럼
-트리거·세션 플래그가 얽힌 경로는 단위 테스트로 대체할 수 없다.
+> `apps/web` 의 `pnpm test` 가 초록인 것은 "테스트가 없다"는 뜻이지 "검증되었다"는 뜻이
+> 아니다(`--passWithNoTests`). `apps/api` 는 이제 플래그를 뗐으므로 스펙이 사라지면 실패한다.
+
+**다음 우선순위** — 프로시저를 실제로 태우는 Repository Integration Test 다. 마감·초기이월처럼
+트리거와 `SESSION_CONTEXT` 플래그가 얽힌 경로는 단위 테스트로 대체할 수 없다. 특히
+`usp_finance_closing_execute` → `usp_finance_closing_reopen` 왕복은 `source='CLOSING'` 회수가
+정확한지 실제 DB 로만 확인할 수 있다.
 
 ---
 
@@ -1413,7 +1423,7 @@ Phase 7
 | 4 SALES | ✅ | 2화면(액티비티는 파이프라인 하위 패널) · 15 엔드포인트 |
 | 5 FINANCE 기준정보 | ✅ | 계정과목 · 관리항목 · 은행/카드 |
 | 6 FINANCE 핵심업무 | ✅ | 초기이월 · 전표 3-Layer · 승인 · 마감/마감해제 |
-| 7 통합 E2E / 성능 / Audit | ⬜ **미착수** | 테스트 0건(§26). 권한·Audit 은 구현되어 있으나 검증 미수행 |
+| 7 통합 E2E / 성능 / Audit | 🔶 **일부** | Domain 단위 테스트 97건 작성(§26). Integration·E2E·성능은 미착수 |
 
 합계 — 화면 17종 · API 94건 · 프로시저 75건 · 트리거 10건.
 
@@ -1495,8 +1505,8 @@ Tenant Scope  → company_id + entity_id  (JWT claim 에서만 주입)
 | Transaction 검토 | ✅ 프로시저 내부 TRY/CATCH + XACT_ABORT |
 | Repository 분리 | ✅ |
 | Swagger 문서 생성 | ✅ `/api/v1/docs` |
-| Unit Test 통과 | ⬜ **미작성** (§26) |
-| Integration Test 통과 | ⬜ **미작성** |
+| Unit Test 통과 | ✅ Domain 4개 스펙 97건 (§26). Application/Query 계층은 아직 없다 |
+| Integration Test 통과 | ⬜ **미작성** — 프로시저를 태우는 Repository 테스트 |
 | 주요 E2E 통과 | ⬜ **미작성** |
 | 공통 UI 사용 | ✅ |
 | Error Message 처리 | ✅ 50xxx → AX-50xxx 한글 메시지 |
@@ -1505,8 +1515,8 @@ Tenant Scope  → company_id + entity_id  (JWT claim 에서만 주입)
 | 코드 포맷/린트 통과 | ⚠ api 만 `eslint src`. web 의 `lint` 는 no-op |
 | 요구사항 ID 추적 가능 | ✅ 코드 주석에 FR/UC ID 유지 |
 
-> 현재 어떤 기능도 이 DoD 를 **완전히** 충족하지 않는다 — 테스트 3항목이 비어 있기 때문이다.
-> 기능 구현은 끝났고 검증이 남았다는 뜻으로 읽어야 한다.
+> 아직 어떤 기능도 이 DoD 를 **완전히** 충족하지 않는다 — Integration·E2E 가 비어 있기 때문이다.
+> 기능 구현은 끝났고 검증이 절반 남았다는 뜻으로 읽어야 한다.
 
 ---
 
