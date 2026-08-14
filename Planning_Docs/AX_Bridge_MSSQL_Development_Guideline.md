@@ -2,7 +2,25 @@
 
 > 목적: VS Code + Claude를 활용하여 AX Bridge를 구현할 때 사용할 공통 개발 규칙  
 > 대상 스택: React + TypeScript + NestJS + Prisma + Microsoft SQL Server  
-> 아키텍처 방향: Modular Monolith + DDD-lite + Clean Architecture
+> 아키텍처 방향: Modular Monolith + DDD-lite + Clean Architecture  
+> 개정: v1.1 (2026-08-14) — 구현 완료본(apps/api · apps/web · db/01~09)과 대조하여 as-built 반영
+
+---
+
+## 0. 이 문서를 읽는 법 (v1.1 개정 요지)
+
+초판은 착수 전 **권장안**이었다. v1.1 은 실제 구현과 대조해 갈라진 곳을 정정한 것이다.
+문서 곳곳의 `[as-built]` 표기는 "구현이 이렇게 되어 있다"는 사실 기술이고, `[미도입]` 은
+권장했으나 채택하지 않은 것이다. 남은 서술은 여전히 지켜야 할 규칙이다.
+
+주요 정정 4건:
+
+| 항목 | 초판 권장 | 실제 |
+|---|---|---|
+| Grid | AG Grid | Ant Design `Table` — 별도 그리드 라이브러리를 도입하지 않았다 |
+| Primary Key | UNIQUEIDENTIFIER 기술키 우선 | **복합 업무키**(§9 개정) — 프로시저·트리거 산출물이 복합키를 전제한다 |
+| 폴더 구조 | 계층별 4단 중첩 | 도메인당 4파일 수준으로 평탄화(§4·§6) |
+| 테스트 | Unit / Integration / E2E | **미작성** — 러너만 배선되어 있다(§26·§32) |
 
 ---
 
@@ -29,88 +47,81 @@ AX Bridge는 SYSTEM, PARTNER, SALES, FINANCE 도메인이 서로 강하게 연�
 
 ---
 
-## 2. 권장 기술 스택
+## 2. 기술 스택 `[as-built]`
 
 ### Frontend
 
-- React
-- TypeScript
-- Vite
-- Ant Design
-- AG Grid
-- TanStack Query
-- React Hook Form
-- Zod
-- Zustand
-- Vitest
-- Playwright
+- React 18 · TypeScript 5.7 · Vite 6
+- Ant Design 5 — 그리드도 antd `Table` 을 쓴다. **AG Grid `[미도입]`**: Head/Detail 그리드가
+  단순 목록이라 별도 그리드 라이브러리의 값이 없었다. 가상 스크롤·피벗이 필요해지면 재검토한다.
+- TanStack Query 5 (서버 상태) · Zustand 5 (인증·탭 등 클라이언트 상태)
+- React Hook Form · Zod
+- Vitest — 러너만 배선(`--passWithNoTests`), 테스트는 아직 없다
+- Playwright `[미도입]`
 
 ### Backend
 
-- NestJS
-- TypeScript
-- Prisma ORM
-- `@prisma/adapter-mssql`
-- Passport
-- JWT 또는 Session
-- Argon2id
-- OpenAPI / Swagger
-- Jest
+- NestJS 11 · TypeScript 5.7
+- Prisma 6 (`@prisma/client`) + `mssql` 드라이버 풀 — 프로시저 호출은 `mssql`,
+  Query Service 조회는 Prisma 를 쓴다(§14·D2)
+- Passport + `@nestjs/jwt` (Access / Refresh)
+- Argon2id (`argon2`)
+- OpenAPI / Swagger (`@nestjs/swagger`) — `/api/v1/docs`
+- `@nestjs/throttler` — 사용자당 120 req/min 전역 Guard
+- `class-validator` / `class-transformer` — 전역 `ValidationPipe`(`forbidNonWhitelisted: true`)
+- Jest — 러너만 배선, 테스트는 아직 없다
 
 ### Database
 
-- Microsoft SQL Server
-- SQL Server Developer Edition 또는 운영 환경에 맞는 SQL Server
-- Prisma Migration
-- 필요 시 Custom T-SQL Migration
+- Microsoft SQL Server (2016 이상 — `OPENJSON` · `SESSION_CONTEXT` 사용), DB명 `AX_Bridge`
+- **스키마 원천은 `db/01~09` T-SQL 스크립트다.** Prisma Migration 은 쓰지 않는다 `[미도입]` —
+  프로시저·트리거가 산출물의 일부라 마이그레이션 생성기로 표현할 수 없다.
+  적용은 `pnpm db:apply`(`scripts/apply-db.mjs`), Prisma 스키마는 `pnpm db:pull` 로 역생성한다.
+- `09_AX_Bridge_Fix.sql` 이후의 모든 DB 수정은 새 번호 스크립트에 집약한다(01~08 은 납품 원본으로 동결).
 
 ### Monorepo / Tooling
 
-- pnpm workspace
-- Turborepo
-- Docker Compose
-- ESLint
-- Prettier
-- VS Code
-- Claude
+- pnpm workspace 11 · Turborepo 2
+- VS Code · Claude
+- Docker Compose `[미도입]` — 로컬 SQL Server 인스턴스에 직접 연결한다
+- ESLint / Prettier `[부분]` — `packages/eslint-config` 는 만들지 않았고 web 의 `lint` 는 no-op 이다
 
 ---
 
-## 3. 프로젝트 최상위 폴더 구조
+## 3. 프로젝트 최상위 폴더 구조 `[as-built]`
 
 ```text
-ax-bridge/
+AX_Core/
 ├─ apps/
-│  ├─ web/
-│  └─ api/
+│  ├─ web/                    React + Vite
+│  └─ api/                    NestJS
 │
 ├─ packages/
 │  ├─ shared-types/
-│  ├─ shared-constants/
-│  └─ eslint-config/
+│  └─ shared-constants/       Role · 코드값 Enum (web/api 공용)
 │
 ├─ prisma/
-│  ├─ schema.prisma
-│  ├─ migrations/
-│  └─ seed/
-│     └─ standard-gl/
+│  └─ schema.prisma           db:pull 로 역생성 — 손으로 고치지 않는다
 │
-├─ docs/
-│  ├─ spec/
-│  │  ├─ system/
-│  │  ├─ partner/
-│  │  ├─ sales/
-│  │  └─ finance/
-│  ├─ erd/
-│  └─ api/
+├─ db/                        ★ 스키마 원천 (Planning_Docs 사본과 동일 파일)
+│  ├─ 01_AX_Bridge_Tables.sql          DDL + 부트스트랩
+│  ├─ 02~05_..._Procs_*.sql            SYSTEM / PARTNER / SALES / FINANCE
+│  ├─ 06_AX_Bridge_Triggers.sql
+│  ├─ 07_AX_Bridge_Seed_GL.sql
+│  ├─ 08_AX_Bridge_Update_v3_Finance.sql
+│  └─ 09_AX_Bridge_Fix.sql             결함수정·무결성 보강·마감해제 (멱등)
 │
-├─ docker-compose.yml
+├─ scripts/apply-db.mjs        01~09 순차 적용
+├─ Planning_Docs/              화면기획서 · DB/API 명세서 · 본 지침
+├─ AX_Bridge_시스템_설계서.md
 ├─ pnpm-workspace.yaml
 ├─ turbo.json
-├─ prisma.config.ts
-├─ CLAUDE.md
 └─ README.md
 ```
+
+`docs/` 는 비어 있다 — 명세는 `Planning_Docs/` 와 Swagger(`/api/v1/docs`)가 대신한다.
+`docker-compose.yml` · `prisma.config.ts` · `CLAUDE.md` · `prisma/migrations` · `prisma/seed` 는
+만들지 않았다(표준 GL seed 는 `07_AX_Bridge_Seed_GL.sql` 이 담당한다).
 
 ---
 
@@ -130,67 +141,59 @@ Infrastructure
 Domain Repository Interface
 ```
 
-### 기본 구조
+### 기본 구조 `[as-built]`
 
 ```text
 apps/api/src/
-├─ main.ts
-├─ app.module.ts
+├─ main.ts                    전역 prefix · CORS · ValidationPipe · Swagger
+├─ app.module.ts              전역 Guard(JWT → Roles → Throttler) · Interceptor · Filter
 │
 ├─ common/
-│  ├─ auth/
-│  ├─ permission/
-│  ├─ tenant/
-│  ├─ database/
-│  ├─ exception/
-│  ├─ transaction/
-│  └─ audit/
+│  ├─ auth/                   auth-user · password-hasher(Argon2id)
+│  ├─ permission/             roles.guard  (@MinRole 최소등급 비교)
+│  ├─ tenant/                 company-scope · @Scope() 데코레이터
+│  ├─ database/               prisma.service · mssql-pool.service · stored-proc.executor · numeric
+│  ├─ exception/              all-exceptions.filter · sql-procedure.error (50xxx → AX-50xxx)
+│  ├─ http/                   api-response.interceptor  ({success, data})
+│  └─ audit/                  audit.interceptor
 │
 └─ modules/
-   ├─ system/
-   ├─ partner/
-   ├─ sales/
-   └─ finance/
+   ├─ auth/  ├─ system/  ├─ partner/  ├─ sales/  └─ finance/
 ```
 
-### 각 도메인의 공통 구조
+`common/transaction/` 은 만들지 않았다 — 트랜잭션 경계는 프로시저 안에 있다(§24).
+
+### 각 도메인의 공통 구조 `[as-built]`
+
+계층 이름은 초판 그대로 두되, **디렉터리 대신 파일 단위로 평탄화**했다. 도메인마다
+파일이 한 자리 수라 4단 중첩은 탐색 비용만 늘렸다. 계층 의존 방향은 그대로 지킨다.
 
 ```text
 <domain>/
-├─ domain/
-│  ├─ entities/
-│  ├─ value-objects/
-│  ├─ enums/
-│  ├─ policies/
-│  ├─ services/
-│  └─ repositories/
-│
-├─ application/
-│  ├─ commands/
-│  ├─ queries/
-│  ├─ dto/
-│  └─ services/
-│
-├─ infrastructure/
-│  ├─ persistence/
-│  │  └─ mssql/
-│  │     ├─ prisma/
-│  │     ├─ repositories/
-│  │     ├─ queries/
-│  │     └─ mappers/
-│  └─ mapper/
-│
-├─ presentation/
-│  └─ http/
-│     ├─ controllers/
-│     └─ dto/
-│
+├─ domain/            프레임워크 비의존 규칙 — 있는 도메인만 둔다
+│                     finance/domain/ledger.ts        전표 Aggregate·차대 균형·Layer3 충돌
+│                     sales/domain/pipeline.ts        스테이지 전이
+│                     partner/domain/payment-term.strategy.ts   EOM / CURM
+│                     system/domain/employee-account.policy.ts  사용자계정 정책
+├─ application/       Domain 판정 + Repository 호출 조립 (finance/system 만 존재)
+├─ infrastructure/    <domain>.repository.ts  프로시저 호출 (mssql)
+│                     <domain>.query.ts       조회 전용 (Prisma) — D2 해당 건만
+├─ presentation/      <domain>.controller.ts  · <domain>.dto.ts
 └─ <domain>.module.ts
 ```
+
+> 규칙은 유지된다 — Controller 는 Prisma/mssql 을 직접 만지지 않고, 업무 판정은
+> `domain/` 이 하며, DB 접근은 `infrastructure/` 만 한다. 바뀐 것은 **파일 배치**뿐이다.
+> 도메인이 커져 한 파일이 다루기 어려워지면 그때 디렉터리로 승격한다.
 
 ---
 
 ## 5. 도메인 구성
+
+> `[as-built]` 아래 트리는 **책임 분해**로 읽는다. §4 에서 밝힌 대로 실제 디렉터리는
+> 애그리거트마다 만들지 않고 도메인당 파일 몇 개로 평탄화되어 있다. 예를 들어 SYSTEM 의
+> company·entity·team·pod·employee·fiscal-year 는 `system.repository.ts` /
+> `system.controller.ts` 안에 컨트롤러 클래스 단위로 나뉜다. 나눠야 할 **책임**은 그대로다.
 
 ### SYSTEM
 
@@ -351,63 +354,57 @@ React는 클래스 기반 객체지향 구조보다 Feature 기반 구조를 사
 
 ```text
 apps/web/src/
+├─ main.tsx
 ├─ app/
-│  ├─ router/
-│  ├─ providers/
-│  └─ layout/
+│  ├─ router.tsx              라우트 정의 (`/` = HomePage)
+│  ├─ AppLayout.tsx           앱 셸 — 4도메인 사이드바 + 상단 실행메뉴 탭
+│  ├─ menu.ts                 ★ 메뉴 단일 출처 — 사이드바와 탭이 같은 정의를 쓴다
+│  ├─ HomePage.tsx            메인 화면
+│  ├─ LoginPage.tsx · PasswordPage.tsx
+│  ├─ auth.store.ts           zustand + persist (토큰·세션 사용자)
+│  └─ tabs.store.ts           zustand — 열린 실행메뉴 탭 (저장하지 않는다)
 │
-├─ features/
-│  ├─ system/
-│  │  ├─ company/
-│  │  ├─ entity/
-│  │  ├─ team/
-│  │  ├─ pod/
-│  │  └─ employee/
-│  │
-│  ├─ partner/
-│  │  ├─ client/
-│  │  ├─ vendor/
-│  │  └─ term/
-│  │
-│  ├─ sales/
-│  │  ├─ pipeline/
-│  │  ├─ activity/
-│  │  └─ contract/
-│  │
-│  └─ finance/
-│     ├─ gl/
-│     ├─ dimension/
-│     ├─ ledger/
-│     ├─ open-balance/
-│     └─ bank-account/
+├─ features/                  도메인당 1파일. 마스터 12화면은 MasterScreen 설정으로 만든다
+│  ├─ MasterScreen.tsx        ★ Head/Detail 마스터 화면 제네릭
+│  ├─ system.screens.tsx      그룹·회사·Pod·부서·직원·기수
+│  ├─ partner.screens.tsx     지급정책·고객사·거래처
+│  ├─ sales.screens.tsx       파이프라인(액티비티 포함)·계약
+│  ├─ finance.screens.tsx     계정과목·관리항목·은행/카드·마감관리
+│  ├─ LedgerScreen.tsx        전표 3-Layer (전용 화면)
+│  └─ OpenBalanceScreen.tsx   초기이월 (전용 화면)
 │
 └─ shared/
-   ├─ ui/
-   │  ├─ AppToolbar/
-   │  ├─ SearchBar/
-   │  ├─ HeadDetailLayout/
-   │  ├─ LookupPopup/
-   │  ├─ ConfirmDialog/
-   │  └─ StatusBadge/
-   ├─ hooks/
-   ├─ api/
-   ├─ constants/
-   └─ utils/
+   ├─ api/client.ts           fetch 래퍼 — 토큰 주입 · 401 시 refresh 재시도
+   └─ ui/                     아래 공통 컴포넌트
 ```
 
-### 공통 UI 컴포넌트
+액티비티는 별도 메뉴가 아니라 파이프라인 화면 안의 하위 패널이다.
+
+### 공통 UI 컴포넌트 `[as-built]`
 
 다음 컴포넌트는 화면별로 중복 구현하지 않는다.
 
-```text
-<AppToolbar />
-<SearchBar />
-<HeadDetailLayout />
-<LookupPopup />
-<DirtyFormGuard />
-<ConfirmDialog />
-<StatusBadge />
-```
+| 컴포넌트 | 역할 |
+|---|---|
+| `<AppToolbar />` | 조회 → 신규 → 수정 → 저장 → 삭제 → 취소 버튼열·상태 표시 |
+| `<HeadDetailLayout />` | 좌 Head Grid / 우 Detail 폼 배치 |
+| `<ResizablePanes />` | 패널 폭 드래그 조절. 인접 두 패널만 조정, 더블클릭 초기화, ←/→ 키 지원,<br>화면별 키로 `localStorage` 유지. HeadDetailLayout(마스터 12화면)과 전표 3-Layer 가 공유한다 |
+| `<LookupPopup />` | F2 / Enter 조회 팝업 (§21, FR-UI-04) |
+| `<DirtyFormGuard />` · `useDirtyGuard` | 미저장 변경 보호 (§22, FR-UI-06) |
+| `StatusBadge` 모듈 | `ActiveBadge` · `ApprovalBadge` · `ClosingBadge` · `ConfirmedBadge` · `EmploymentBadge` · `StageBadge` · `Money` |
+
+`<SearchBar />` 와 `<ConfirmDialog />` 는 별도 컴포넌트로 만들지 않았다 `[미도입]` —
+조회조건은 화면마다 필드가 달라 각 화면이 직접 구성하고, 확인창은 antd `Modal.confirm` 을 쓴다.
+
+### 상단 실행메뉴 탭 `[as-built]`
+
+메뉴를 실행하면 헤더에 탭이 뜨고, 탭 클릭으로 그 화면에 돌아간다.
+
+- 탭 생성은 메뉴 클릭 핸들러가 아니라 **경로 변경**을 보고 한다 — 주소창 직접 입력·화면 내부
+  이동·새로고침에도 동일하게 동작한다. 메뉴에 없는 경로(`/`, 비밀번호 변경)는 탭을 만들지 않는다.
+- 같은 메뉴를 다시 눌러도 탭은 하나다.
+- 탭을 닫을 때 그 탭을 보고 있었다면 옆 탭으로, 남은 탭이 없으면 메인 화면으로 이동한다.
+- 로그아웃 시 탭을 비운다.
 
 AX Bridge 공통 UI 흐름은 아래 형태를 기본으로 한다.
 
@@ -626,56 +623,53 @@ Timezone까지 명확하게 저장해야 하는 신규 컬럼은 `DATETIMEOFFSET
 
 ---
 
-## 9. Primary Key / Business Key 설계
+## 9. Primary Key / Business Key 설계 `[as-built — 초판 권장안 폐기]`
 
-AX Bridge 신규 DB에서는 **기술 PK + 업무 Unique Key** 전략을 우선 검토한다.
-
-권장 기술 PK:
-
-```sql
-UNIQUEIDENTIFIER
-```
-
-예:
+초판은 `UNIQUEIDENTIFIER` 기술 PK + 업무 Unique Key 를 권장했다. **채택하지 않았다.**
+AX Bridge 는 **복합 업무키를 그대로 Primary Key 로 쓴다.**
 
 ```text
-company_pk
-entity_pk
-client_pk
-vendor_pk
-contract_pk
-ledger_pk
-ledger_detail_pk
+DB Primary Key = 복합 업무키  (company_id, entity_id, …)
 ```
 
-Prisma에서는 UUID를 사용한다.
+이유는 산출물 구조에 있다.
 
-예:
+1. 프로시저 74건과 트리거 10건이 모두 `@company_id, @entity_id, <업무코드>` 파라미터로
+   행을 특정한다. 기술 PK 를 도입하면 이 서명을 전부 바꾸거나 매 호출마다 코드→GUID
+   변환 조회를 끼워야 한다.
+2. 멀티테넌시가 PK 선두 두 컬럼에 들어 있어 회사 범위 격리가 인덱스 수준에서 강제된다.
+3. 화면·API 경로가 업무코드를 그대로 쓴다(`/system/employees/{employeeId}`). 기술 PK 는
+   여기서 아무 값도 더하지 않는다.
 
-```prisma
-id String @id @default(uuid()) @db.UniqueIdentifier
-```
-
-업무 코드에는 별도 UNIQUE 제약조건을 둔다.
-
-예:
+### 실제 PK 구성 예
 
 ```sql
-UNIQUE (
-  company_id,
-  entity_id,
-  client_id
-)
+CONSTRAINT PK_finance_bank_account PRIMARY KEY (company_id, entity_id, bank_id)
+CONSTRAINT PK_sales_pipeline_detail PRIMARY KEY (company_id, entity_id, pipeline_id, activity_id)
 ```
 
-### 원칙
+### nullable 컬럼과 PK
 
-```text
-DB Primary Key = 기술 식별자
-Business Key   = UNIQUE INDEX / UNIQUE CONSTRAINT
+"선택 가능한 nullable 컬럼을 PK 에 포함하지 않는다"는 원칙은 유지된다. 다만
+`finance_open_balance` 처럼 보조잔액 키(은행/카드·고객사·거래처)가 선택 입력인 경우가 있다.
+이때는 **PERSISTED 계산컬럼으로 NULL 을 제거한 뒤** PK 에 넣는다(`09` 1-1).
+
+```sql
+bank_key   AS ISNULL(bank_id,   '-') PERSISTED
+client_key AS ISNULL(client_id, '-') PERSISTED
+vendor_key AS ISNULL(vendor_id, '-') PERSISTED
+
+CONSTRAINT PK_finance_open_balance PRIMARY KEY CLUSTERED
+    (company_id, entity_id, company_year_id, gl_id, DRCR, bank_key, client_key, vendor_key)
 ```
 
-복합 업무 PK가 꼭 필요한 경우에는 예외적으로 Composite PK를 사용할 수 있으나, 선택 가능한 nullable 컬럼을 Primary Key에 포함하지 않는다.
+계산컬럼이 결정적이고 NULL 이 될 수 없어 PK 구성이 가능하다. 환경 제약으로 거부되면
+같은 컬럼 집합의 UNIQUE CLUSTERED INDEX 로 대체한다.
+
+### Prisma
+
+`prisma/schema.prisma` 는 `db:pull` 로 역생성한 결과이며 복합키가 `@@id([...])` 로 표현된다.
+손으로 고치지 않는다 — 스키마 원천은 `db/01~09` T-SQL 이다.
 
 ---
 
@@ -819,17 +813,22 @@ export interface LedgerRepository {
 }
 ```
 
-Infrastructure에서 MSSQL/Prisma 구현체를 제공한다.
+Infrastructure에서 MSSQL/Prisma 구현체를 제공한다 `[as-built]`:
 
 ```text
 infrastructure/
-└─ persistence/
-   └─ mssql/
-      ├─ prisma/
-      ├─ repositories/
-      ├─ queries/
-      └─ mappers/
+├─ <domain>.repository.ts   프로시저 호출 — StoredProcExecutor(mssql 풀)
+└─ <domain>.query.ts        조회 전용 SELECT — Prisma (D2 해당 건만)
 ```
+
+읽기 경로가 둘인 것은 의도된 것이다(§14·D2). **기본은 프로시저다** — 검증·권한·마감
+잠금이 프로시저 안에 있기 때문이다. Prisma Query Service 는 프로시저가 돌려주는 열이
+화면 요구에 못 미칠 때만 쓴다. 현재 해당 건은 `GET /finance/gl` 하나뿐이다
+(`usp_finance_gl_list` 는 `gl_id`·`gl_name` 2열만 반환하는데 화면기획서 5-1 ② 는
+계정구분까지 3열을 요구한다. 부수 효과로 페이징이 붙었다).
+
+> 프로시저를 고쳐 열을 늘리는 선택지도 있었다. 그러지 않은 이유는 `01~08` 을 납품
+> 원본으로 동결하기 때문이다 — 조회 형태가 바뀔 때마다 프로시저를 고치면 그 동결이 깨진다.
 
 ### 금지
 
@@ -871,9 +870,9 @@ MSSQL
 수정
 삭제
 승인
-승인취소
+승인취소   ← [미구현] 원본 프로시저에 경로가 없다(§23)
 마감
-마감해제
+마감해제   ← 09 에서 신설(usp_finance_closing_reopen)
 ```
 
 처리 흐름:
@@ -1113,32 +1112,47 @@ Enter
 
 단순 CRUD URL보다 업무 행위를 명시하는 Endpoint를 사용한다.
 
-예:
+실제 엔드포인트 `[as-built]` — 전표 (식별키가 `{ledgerDate}/{ledgerNo}` 복합키다):
 
 ```http
-POST   /finance/ledgers
-GET    /finance/ledgers
-GET    /finance/ledgers/{id}
-PUT    /finance/ledgers/{id}
-DELETE /finance/ledgers/{id}
-
-POST   /finance/ledgers/{id}/approve
-POST   /finance/ledgers/{id}/cancel-approval
+GET    /finance/ledgers                                    헤더 목록(Layer1)
+GET    /finance/ledgers/{ledgerDate}/{ledgerNo}            헤더+라인+플래그
+POST   /finance/ledgers                                    Head 등록(ledger_no 자동채번)
+PUT    /finance/ledgers/{ledgerDate}/{ledgerNo}            Head 수정(미승인만)
+PUT    /finance/ledgers/{ledgerDate}/{ledgerNo}/lines      라인 일괄 저장
+POST   /finance/ledgers/{ledgerDate}/{ledgerNo}/approve    승인(APPROVER)
+DELETE /finance/ledgers/{ledgerDate}/{ledgerNo}            삭제(미승인만)
+POST   /finance/ledgers/preview-account-change             계정 변경 시 Layer3 충돌 미리보기
 ```
 
-기초잔액:
+> ⚠ **`cancel-approval`(승인취소)은 구현되어 있지 않다.** 원본 프로시저 산출물에 해당 경로가
+> 없다. 이 때문에 연도 회계마감을 해제해도 기존 승인 전표는 여전히 편집할 수 없다
+> (설계서 §9.6 한계). 승인취소가 필요해지면 프로시저 신설이 선행되어야 한다.
+
+초기이월 — 기수는 경로가 아니라 본문으로 받는다:
 
 ```http
-POST /finance/open-balances/{fiscalYearId}/close
-POST /finance/open-balances/{fiscalYearId}/reopen
+GET  /finance/open-balances?company_year_id=…
+PUT  /finance/open-balances            일괄 저장(미확정 행만)
+POST /finance/open-balances/close      확정(APPROVER) — 차대 균형 검증
+POST /finance/open-balances/reopen     확정해제(ADMIN)
 ```
 
-Pipeline:
+연도 회계마감 — 초기이월 "확정"과 **다른 개념**이다(설계서 §9.4):
 
 ```http
-POST /sales/pipelines/{id}/close
-POST /sales/pipelines/{id}/cancel
-POST /sales/pipelines/{id}/reopen
+GET  /finance/closings
+GET  /finance/closings/{yearId}/status
+POST /finance/closings/{yearId}/execute   마감 실행(ADMIN) — 오름차순 순차
+POST /finance/closings/{yearId}/reopen    마감 해제(ADMIN) — 내림차순 순차
+```
+
+Pipeline — 스테이지 전환용 별도 엔드포인트는 두지 않았다. 전환도 수정이며,
+`closed_date` 기록은 트리거가 담당하므로 행위 엔드포인트가 값을 더하지 않았다:
+
+```http
+PUT /sales/pipelines/{pipelineId}            stage 전환 포함
+PUT /sales/pipelines/{pipelineId}/contract   계약 연결/해제
 ```
 
 ---
@@ -1168,22 +1182,38 @@ datasource db {
 }
 ```
 
-DB 컬럼명을 기존 명세와 유지하고 TypeScript 이름은 camelCase로 사용할 경우 `@map`을 활용한다.
+### 스키마는 손으로 쓰지 않는다 `[as-built]`
+
+`prisma/schema.prisma` 는 `pnpm db:pull` 이 실제 DB 에서 역생성한 결과다. 원천은
+`db/01~09` T-SQL 이므로 스키마 파일을 직접 고치면 다음 `db:pull` 에 덮어써진다.
+따라서 `@map` 으로 camelCase 를 입히는 초판 권장안도 채택하지 않았다 —
+역생성 결과는 DB 컬럼명을 그대로 쓴다.
 
 ```prisma
-model SystemCompany {
-  id            String @id @default(uuid()) @db.UniqueIdentifier
-
-  companyId     String @map("company_id") @db.VarChar(10)
-
-  companyName   String @map("company_name") @db.NVarChar(100)
-
-  companyNameKo String @map("company_name_ko") @db.NVarChar(100)
-
-  @@unique([companyId])
-  @@map("system_company")
+model system_company {
+  company_id      String          @id(map: "PK_system_company") @db.VarChar(10)
+  company_name    String          @db.NVarChar(50)
+  company_name_ko String          @db.NVarChar(50)
+  note            String?         @db.NVarChar(200)
+  description     String?         @db.NVarChar(200)
+  status          Boolean         @default(false, map: "DF_company_status")
+  system_entity   system_entity[]
 }
 ```
+
+복합키 테이블은 `@@id([company_id, entity_id, …])` 로 표현된다(§9).
+
+> ⚠ **`status` 극성이 테이블마다 반대다.** `bit` 은 Prisma 에서 `Boolean` 으로 매핑되지만
+> 그 `true` 가 "사용중"을 뜻하는지는 테이블에 따라 다르다 — 원본 명세가 그렇게 굳어 있다.
+>
+> ```text
+> 활성 = 0 : system_company · system_entity · system_pod · system_team · finance_bank_account
+> 활성 = 1 : partner_term · partner_client · partner_vendor · finance_GL · finance_dimension
+> ```
+>
+> 그래서 `status` 를 직접 비교하지 않는다. `@ax-bridge/shared-constants` 의
+> `isActive(table, status)` / `toDbStatus(table, active)` 가 극성을 흡수한다.
+> 새 테이블을 추가하면 `ACTIVE_WHEN_ZERO` / `ACTIVE_WHEN_ONE` 목록에 반드시 등록한다.
 
 Prisma Model을 Domain Entity로 직접 사용하지 않는다.
 
@@ -1226,6 +1256,27 @@ describe('Pipeline', () => {
 - Repository Integration Test
 - API E2E Test
 - 주요 UI Playwright E2E
+
+### 현황 `[as-built]` — ⚠ 미이행
+
+**테스트는 아직 한 건도 작성하지 않았다.** 러너만 배선되어 있고 둘 다 통과 처리된다.
+
+```text
+apps/api   jest --passWithNoTests      테스트 파일 0개
+apps/web   vitest run --passWithNoTests  테스트 파일 0개
+Playwright  미도입
+```
+
+`pnpm test` 가 초록이어도 그것은 "테스트가 없다"는 뜻이지 "검증되었다"는 뜻이 아니다.
+착수 시 우선순위가 높은 순서는 다음과 같다 — 모두 DB 없이 돌릴 수 있는 것부터다.
+
+1. `finance/domain/ledger.ts` — 차대 균형·승인 상태 전이·Layer3 충돌 판정
+2. `partner/domain/payment-term.strategy.ts` — EOM / CURM 지급일 계산(월말 보정·윤년)
+3. `sales/domain/pipeline.ts` — 스테이지 전이와 `closed_date`
+4. `system/domain/employee-account.policy.ts` — `user_yn` 과 자격증명 규칙
+
+그 다음이 프로시저를 실제로 태우는 Repository Integration Test 다 — 마감·초기이월처럼
+트리거·세션 플래그가 얽힌 경로는 단위 테스트로 대체할 수 없다.
 
 ---
 
@@ -1351,6 +1402,21 @@ Phase 7
 통합 E2E / 성능 / 권한 / Audit
 ```
 
+### 진행 현황 `[as-built]` (2026-08-14)
+
+| Phase | 상태 | 비고 |
+|---|---|---|
+| 0 Bootstrap | ✅ | DB 01~09 · Prisma · JWT/Argon2id · RolesGuard · 전역 예외/응답/감사 |
+| 1 공통 UI | ✅ | AppToolbar · HeadDetailLayout · ResizablePanes · LookupPopup · DirtyFormGuard · StatusBadge |
+| 2 SYSTEM | ✅ | 6화면 · 28 엔드포인트 |
+| 3 PARTNER | ✅ | 3화면 · 15 엔드포인트 |
+| 4 SALES | ✅ | 2화면(액티비티는 파이프라인 하위 패널) · 15 엔드포인트 |
+| 5 FINANCE 기준정보 | ✅ | 계정과목 · 관리항목 · 은행/카드 |
+| 6 FINANCE 핵심업무 | ✅ | 초기이월 · 전표 3-Layer · 승인 · 마감/마감해제 |
+| 7 통합 E2E / 성능 / Audit | ⬜ **미착수** | 테스트 0건(§26). 권한·Audit 은 구현되어 있으나 검증 미수행 |
+
+합계 — 화면 17종 · API 94건 · 프로시저 75건 · 트리거 10건.
+
 ---
 
 ## 31. 최종 기술 방향
@@ -1358,52 +1424,60 @@ Phase 7
 ```text
 Frontend
 React + TypeScript + Vite
-Ant Design + AG Grid
-TanStack Query
+Ant Design (Table 포함 — 별도 그리드 라이브러리 없음)
+TanStack Query + Zustand
 React Hook Form + Zod
 
-        ↓ REST API
+        ↓ REST /api/v1  (JWT Bearer)
 
 Backend
 NestJS + TypeScript
+Guard: JwtAuth → Roles → Throttler
+Interceptor: Audit → ApiResponse
+Filter: AllExceptions (50xxx → AX-50xxx)
 
         ↓
 
 Domain
 SYSTEM / PARTNER / SALES / FINANCE
+프레임워크 비의존 — 전표 Aggregate · 지급정책 · 스테이지 전이 · 계정 정책
 
         ↓
 
 Application
-Command / Query / DTO
+Domain 판정 + Repository 조립
 
         ↓
 
 Infrastructure
-Prisma
-MSSQL Repository
-Query Service
+mssql   → 저장 프로시저 호출 (쓰기·대부분의 조회)
+Prisma  → Query Service (D2 해당 건만: GET /finance/gl)
 
         ↓
 
 Microsoft SQL Server
+프로시저 75 · 트리거 10 — 업무 규칙의 최종 방어선
 ```
 
-DB 기본 원칙:
+DB 기본 원칙 `[as-built]`:
 
 ```text
-PK            → UNIQUEIDENTIFIER 기술키 우선
-Business Key  → UNIQUE CONSTRAINT / INDEX
+PK            → 복합 업무키 (company_id, entity_id, …)   ※ 기술 PK 미채택 — §9
+Business Key  → PK 자체. 보조 유일성은 UNIQUE INDEX
 업무 코드     → VARCHAR
 명칭/한글     → NVARCHAR
 Boolean       → BIT
-금액          → DECIMAL
-날짜          → DATE
-일시          → DATETIME2
-Tenant Scope  → company_id + entity_id
-전표번호      → 별도 Number Generator
-삭제          → 참조 검증 후 Delete 또는 Disable
+금액          → NUMERIC(18,2)
+날짜(업무일자) → DATE
+일시(감사시각) → DATETIME2(0)   last_login · last_manual_edit_at · approved_date
+Tenant Scope  → company_id + entity_id  (JWT claim 에서만 주입)
+전표번호      → 프로시저가 (회사, 전표일자) 범위에서 동시성 안전 채번 — §12
+삭제          → 참조 검증 후 Delete 또는 Disable. 트리거가 이중 방어
 ```
+
+> `approved_date` 는 `09` 에서 `DATE → DATETIME2(0)` 로 넓혔다. 승인은 감사 대상 행위라
+> 일 단위로는 부족하다. `insert_date` · `update_date` · `closed_date` · `closing_date` 는
+> 업무일자이므로 `DATE` 를 유지한다.
 
 ---
 
@@ -1411,23 +1485,28 @@ Tenant Scope  → company_id + entity_id
 
 하나의 기능은 다음 조건을 모두 충족해야 완료로 본다.
 
-- 관련 FR 구현 완료
-- 관련 UC 정상/예외 흐름 구현 완료
-- CompanyScope 적용
-- Domain Validation 적용
-- DB Constraint 적용
-- Transaction 검토
-- Repository 분리
-- Swagger 문서 생성
-- Unit Test 통과
-- Integration Test 통과
-- 주요 E2E 통과
-- 공통 UI 사용
-- Error Message 처리
-- 권한 처리
-- 미저장 변경 보호
-- 코드 포맷/린트 통과
-- 요구사항 ID 추적 가능
+| 조건 | 현황 `[as-built]` |
+|---|---|
+| 관련 FR 구현 완료 | ✅ |
+| 관련 UC 정상/예외 흐름 구현 완료 | ✅ |
+| CompanyScope 적용 | ✅ `@Scope()` + JwtAuthGuard |
+| Domain Validation 적용 | ✅ `domain/` + `class-validator` DTO |
+| DB Constraint 적용 | ✅ `01`~`09` (무결성 보강은 `09`) |
+| Transaction 검토 | ✅ 프로시저 내부 TRY/CATCH + XACT_ABORT |
+| Repository 분리 | ✅ |
+| Swagger 문서 생성 | ✅ `/api/v1/docs` |
+| Unit Test 통과 | ⬜ **미작성** (§26) |
+| Integration Test 통과 | ⬜ **미작성** |
+| 주요 E2E 통과 | ⬜ **미작성** |
+| 공통 UI 사용 | ✅ |
+| Error Message 처리 | ✅ 50xxx → AX-50xxx 한글 메시지 |
+| 권한 처리 | ✅ `@MinRole` + RolesGuard |
+| 미저장 변경 보호 | ✅ `DirtyFormGuard` |
+| 코드 포맷/린트 통과 | ⚠ api 만 `eslint src`. web 의 `lint` 는 no-op |
+| 요구사항 ID 추적 가능 | ✅ 코드 주석에 FR/UC ID 유지 |
+
+> 현재 어떤 기능도 이 DoD 를 **완전히** 충족하지 않는다 — 테스트 3항목이 비어 있기 때문이다.
+> 기능 구현은 끝났고 검증이 남았다는 뜻으로 읽어야 한다.
 
 ---
 
